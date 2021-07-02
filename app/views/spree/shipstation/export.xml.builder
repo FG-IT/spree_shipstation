@@ -30,7 +30,7 @@ xml.Orders(pages: (@shipments.total_count / 50.0).ceil) {
           xml.Item {
             xml.SKU variant.sku
             xml.Name [variant.product.name, variant.options_text].join(" ")
-            xml.ImageUrl variant.images.first.try(:attachment).try(:url)
+            xml.ImageUrl variant.images.length > 0 ? main_app.url_for(variant.images.first.url(:pdp_thumbnail)) : main_app.url_for(variant.product.images.first.url(:pdp_thumbnail))
             xml.Weight variant.weight.to_f
             xml.WeightUnits SpreeShipstation.configuration.weight_units
             xml.Quantity line.quantity
