@@ -23,6 +23,7 @@ module SpreeShipstation
         raise ShipmentNotFoundError, shipment
       end
 
+      approve_order
       process_payment
       ship_shipment
 
@@ -33,6 +34,12 @@ module SpreeShipstation
 
     def shipment
       @shipment ||= ::Spree::Shipment.find_by(number: shipment_number)
+    end
+
+    def approve_order
+      return if shipment.order.approved?
+      approved_by = ::Spree::User.find_by(id: 48093)
+      shipment.order.approved_by(approved_by)
     end
 
     def process_payment
