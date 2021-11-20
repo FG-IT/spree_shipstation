@@ -1,0 +1,36 @@
+<% content_for :page_title do %>
+  <%= plural_resource_name(Spree::ShipstationAccount) %>
+<% end %>
+
+<% content_for :page_actions do %>
+  <%= button_link_to Spree.t(:new),
+    new_admin_shipstation_account_path,
+    class: "btn-success",
+      icon: 'add.svg',
+      id: 'admin_new_shipstation_account' %>
+<% end if can? :create, Spree::ShipstationAccount %>
+
+<div class="table-responsive">
+  <table class="table">
+    <thead>
+      <tr>
+        <th>id</th>
+        <th>name</th>
+        <th>username</th>
+        <th>password</th>
+        <th>stock locations</th>
+      </tr>
+    </thead>
+    <tbody>
+      <% @shipstation_accounts.each do |account|%>
+        <tr>
+          <td><%= account.id %></td>
+          <td><%= account.name %></td>
+          <td><%= account.username %></td>
+          <td><%= account.password %></td>
+          <td><%= account.stock_locations.pluck(:name).map{|name| "<span>#{name}</span>"}.join('<br>').html_safe %></td>
+        </tr>
+      <% end %>
+    </tbody>
+  </table>
+</div>

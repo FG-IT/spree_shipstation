@@ -1,0 +1,29 @@
+<% content_for :page_title do %>
+  <%= "New Shipstation Account" %>
+<% end %>
+
+<%= form_with(model: @shipstation_account, url: admin_shipstation_accounts_path) do |f| %>
+  <div class="d-none alert alert-success" role="alert"></div>
+  <div class="d-none alert alert-danger" role="alert"></div>
+  <% if @shipstation_account.errors.any? %>
+    <div id="error_explanation">
+      <h2><%= pluralize(@shipstation_account.errors.count, "error") %> prohibited this shipstation_account from being saved:</h2>
+      <ul>
+        <% @shipstation_account.errors.each do |error| %>
+          <li><%= error.full_message %></li>
+        <% end %>
+      </ul>
+    </div>
+  <% end %>
+  <div class="form-group">
+    <%= f.label :username %>
+    <%= f.text_field :username, class: "form-control", required: true %>
+  </div>
+
+  <div class="form-group">
+    <%= f.label :password %>
+    <%= f.text_field :password, class: "form-control", required: true, minlength: 6%>
+  </div>
+
+  <%= f.submit class: "btn btn-primary"%>
+<% end %>
