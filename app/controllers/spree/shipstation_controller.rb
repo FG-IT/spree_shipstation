@@ -8,6 +8,7 @@ module Spree
 
     def export
       @shipments = Spree::Shipment
+        .where(stock_location_id: @shipstation_account.stock_location_ids)
         .exportable
         .between(date_param(:start_date), date_param(:end_date))
         .page(params[:page])
