@@ -7,11 +7,11 @@ module Spree
     end
 
     module ClassMethods
-      def exportable
+      def exportable(need_order_approval = false)
         query = order(:updated_at)
           .joins(:order)
           .merge(::Spree::Order.complete)
-
+        query = query.merge(::Spree::Order.where.not(approved_at: nil)) if need_order_approval
         unless SpreeShipstation.configuration.capture_at_notification
           query = query.where(spree_shipments: {state: ["ready", "canceled"]})
         end
