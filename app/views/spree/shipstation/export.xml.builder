@@ -26,6 +26,7 @@ xml.Orders(pages: (@shipments.total_count / 50.0).ceil) {
 
       xml.Items {
         shipment.line_items.each do |line|
+          next if line.try(:refund_items).present?
           variant = line.variant
           xml.Item {
             xml.SKU variant.sku
