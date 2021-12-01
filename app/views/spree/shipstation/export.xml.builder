@@ -11,7 +11,7 @@ xml.Orders(pages: (@shipments.total_count / 50.0).ceil) {
       xml.OrderNumber shipment.number
       xml.OrderDate order.completed_at.strftime(SpreeShipstation::ExportHelper::DATE_FORMAT)
       xml.OrderStatus shipment.state
-      xml.LastModified [order.completed_at, shipment.updated_at].max.strftime(SpreeShipstation::ExportHelper::DATE_FORMAT)
+      xml.LastModified [order.updated_at, shipment.updated_at].max.strftime(SpreeShipstation::ExportHelper::DATE_FORMAT)
       xml.ShippingMethod shipment.shipping_method.try(:name)
       xml.OrderTotal order.total
       xml.TaxAmount order.tax_total
