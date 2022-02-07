@@ -27,6 +27,7 @@ Gem::Specification.new do |s|
   s.add_dependency "spree_api", spree_version
   s.add_dependency "spree_backend", spree_version
   s.add_dependency "spree_extension"
+  s.add_dependency "http"
 
   s.add_development_dependency "rspec-xsd"
   s.add_development_dependency "spree_dev_tools"
