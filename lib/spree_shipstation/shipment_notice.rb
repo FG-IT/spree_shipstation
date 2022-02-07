@@ -33,7 +33,7 @@ module SpreeShipstation
 
     def handle_xml_body
       begin
-        if @xml_body.present?
+        if @xml_body.present? && shipment.has_attribute?(:actual_costs)
           doc = Nokogiri::XML(@xml_body)
           shipping_cost = doc.at_css('ShipNotice ShippingCost')&.content&.to_f
           shipment.update_column(:actual_cost, shipping_cost)
