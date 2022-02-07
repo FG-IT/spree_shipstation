@@ -1,5 +1,8 @@
 module Spree
   class ShipstationAccount < Spree::Base
+
+    enum status: { active: 1, inactive: 0 }
+
     validates :username, presence: true, uniqueness: true
     validates :password, presence: true, length: { minimum: 6 }
 
