@@ -5,29 +5,42 @@ module SpreeShipstation
     attr_reader :shipment_number, :shipment_tracking
 
     class << self
-      def from_payload(params)
+      def from_payload(params, xml_body = nil)
         new(
           shipment_number: params[:order_number],
-          shipment_tracking: params[:tracking_number]
+          shipment_tracking: params[:tracking_number],
+          xml_body: xml_body
         )
       end
     end
 
-    def initialize(shipment_number:, shipment_tracking:)
+    def initialize(shipment_number:, shipment_tracking:, xml_body: )
       @shipment_number = shipment_number
       @shipment_tracking = shipment_tracking
+      @xml_body = xml_body
     end
 
     def apply
       unless shipment
         raise ShipmentNotFoundError, shipment
       end
-
       approve_order
       process_payment
       ship_shipment
-
+      handle_xml_body
       shipment
+    end
+
+    def handle_xml_body
+      begin
+        if @xml_body.present?
+          doc = Nokogiri::XML(@xml_body)
+          shipping_cost = doc.at_css('ShipNotice ShippingCost')&.content&.to_f
+          shipment.update_column(:actual_cost, shipping_cost)
+        end
+      rescue => e
+        Rails.logger.error(e.message)
+      end
     end
 
     private
