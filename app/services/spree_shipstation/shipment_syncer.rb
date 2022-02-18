@@ -16,8 +16,7 @@ module SpreeShipstation
         res = @api_client.get_shipments(params)
         @last_create_on = process_response(res)
         if @last_create_on.present?
-          @shipstation_account.update(shipments_sync_until: @last_create_on) 
-          @page += 1
+          @shipstation_account.update(shipments_sync_until: @last_create_on)
           wait
           sync
         end
@@ -48,7 +47,7 @@ module SpreeShipstation
         spree_shipment = Spree::Shipment.find_by(number: spree_shipment_id)
         spree_shipment&.update_column(:actual_cost, ss_shipment['shipmentCost'])
       end
-      res['shipments']&.last&.try(:[], 'createDate')
+      res['shipments']&.size == PAGE_SIZE ? res['shipments']&.last&.try(:[], 'createDate') : nil
     end
     
   end
