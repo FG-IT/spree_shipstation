@@ -20,7 +20,7 @@
 
       <div class="form-group">
         <%= f.label :password %>
-        <%= f.text_field :password, class: "form-control", required: true, minlength: 6%>
+        <%= f.text_field :password, type: "password", class: "form-control", required: true, minlength: 6%>
       </div>
 
       <div class="form-group">
@@ -37,6 +37,12 @@
         <%= f.label :status %>
         <%= f.select :status, Spree::ShipstationAccount.statuses.keys, {}, { class: 'form-control' }%>
       </div>
+
+      <div class="form-check">
+        <%= f.check_box :orders_need_approval, class: "form-check-input" %>
+        <%= f.label :orders_need_approval, class: "form-check-label" %>
+      </div>
+
 
       <div class="form-group">
         <%= f.label :store_ids, 'Shipstation store Ids, if multiple, seperate by comma' %>
