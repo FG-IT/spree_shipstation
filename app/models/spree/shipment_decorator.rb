@@ -12,13 +12,17 @@ module Spree
           .joins(:order)
           .merge(::Spree::Order.complete)
         query = query.merge(::Spree::Order.where.not(approved_at: nil)) if need_order_approval
-        unless SpreeShipstation.configuration.capture_at_notification
-          query = query.where(spree_shipments: {state: ["ready", "canceled"]})
-        end
 
-        unless SpreeShipstation.configuration.export_canceled_shipments
-          query = query.where.not(spree_shipments: {state: "canceled"})
-        end
+        # if the payment is authed, but not caputred yet, the shipment status is pending.
+        query = query.where(spree_shipments: {state: ["ready", "pending"]})
+
+        # unless SpreeShipstation.configuration.capture_at_notification
+        #   query = query.where(spree_shipments: {state: ["ready", "canceled"]})
+        # end
+
+        # unless SpreeShipstation.configuration.export_canceled_shipments
+        #   query = query.where.not(spree_shipments: {state: "canceled"})
+        # end
 
         query
       end
