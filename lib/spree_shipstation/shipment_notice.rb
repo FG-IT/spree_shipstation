@@ -9,14 +9,16 @@ module SpreeShipstation
         new(
           shipment_number: params[:order_number],
           shipment_tracking: params[:tracking_number],
+          carrier: params[:carrier],
           xml_body: xml_body
         )
       end
     end
 
-    def initialize(shipment_number:, shipment_tracking:, xml_body: )
+    def initialize(shipment_number:, shipment_tracking:, carrier:, xml_body: )
       @shipment_number = shipment_number
       @shipment_tracking = shipment_tracking
+      @shipment_carrier = carrier
       @xml_body = xml_body
     end
 
@@ -70,8 +72,7 @@ module SpreeShipstation
     end
 
     def ship_shipment
-      shipment.update_attribute(:tracking, shipment_tracking)
-
+      shipment.update_attributes(tracking: shipment_tracking, carrier: @shipment_carrier)
       unless shipment.shipped?
         shipment.reload.ship!
         shipment.touch :shipped_at
