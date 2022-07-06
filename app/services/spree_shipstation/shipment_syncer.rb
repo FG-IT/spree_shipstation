@@ -1,6 +1,6 @@
 module SpreeShipstation
   class ShipmentSyncer
-    PAGE_SIZE = 50
+    PAGE_SIZE = 100
     def initialize(shipstation_account)
       @shipstation_account = shipstation_account
       @api_key = shipstation_account.api_key
@@ -32,13 +32,15 @@ module SpreeShipstation
     end
 
     def generate_params
-      {
+      p = {
         'page' => @page,
         'pageSize' => PAGE_SIZE,
         'sortBy' => 'createDate',
         'createDateStart' => @last_create_on,
         'createDateEnd' => DateTime.tomorrow.end_of_day.to_formatted_s(:iso8601)
       }
+      p['storeId'] = @shipstation_account.shipstation_store_id if @shipstation_account.shipstation_store_id.present?
+      p
     end
 
     def process_response(res)
