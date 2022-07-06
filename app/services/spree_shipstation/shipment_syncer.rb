@@ -43,12 +43,22 @@ module SpreeShipstation
 
     def process_response(res)
       res['shipments']&.each do |ss_shipment|
-        spree_shipment_id = ss_shipment['orderNumber']
-        spree_shipment = Spree::Shipment.find_by(number: spree_shipment_id)
-        spree_shipment&.update_column(:actual_cost, ss_shipment['shipmentCost'])
+        spree_shipment = Spree::Shipment.find_by(number: ss_shipment['orderNumber'])
+        next if spree_shipment.blank?
+        attrs = { actual_cost: ss_shipment['shipmentCost'] }
+        attrs[:carrier] = get_carrier(ss_shipment['carrierCode'], ss_shipment['serviceCode']) if spree_shipment.carrier.blank?
+        attrs[:tracking] = ss_shipment['trackingNumber'] if spree_shipment.tracking.blank?
+        spree_shipment&.update_columns(attrs)
       end
       res['shipments']&.size == PAGE_SIZE ? res['shipments']&.last&.try(:[], 'createDate') : nil
     end
     
+    def get_carrier(carrier_code, service_code)
+      if carrier_code == 'stamps_com' && service_code.start_with?('usps_')
+        'USPS'
+      else
+        carrier_code.upcase
+      end
+    end
   end
 end
