@@ -72,7 +72,7 @@ module SpreeShipstation
     end
 
     def ship_shipment
-      shipment.update_attributes(tracking: shipment_tracking, carrier: @shipment_carrier)
+      shipment.update(tracking: shipment_tracking, carrier: @shipment_carrier)
       unless shipment.shipped?
         shipment.reload.ship!
         shipment.touch :shipped_at
