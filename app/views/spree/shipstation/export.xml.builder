@@ -25,7 +25,8 @@ xml.Orders(pages: (@shipments.total_count / 50.0).ceil) {
       end
 
       xml.Items {
-        shipment.line_items.each do |line|
+        shipment.inventory_units.each do |inventory_unit|
+          line = @line_items[inventory_unit.line_item_id]
           next if line.try(:refund_items).present?
           variant = line.variant
           Rails.logger.info(line.to_json)
