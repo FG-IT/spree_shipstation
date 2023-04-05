@@ -50,7 +50,11 @@ module SpreeShipstation
         attrs = { actual_cost: ss_shipment['shipmentCost'] }
         attrs[:carrier] = get_carrier(ss_shipment['carrierCode'], ss_shipment['serviceCode']) if spree_shipment.carrier.blank?
         attrs[:tracking] = ss_shipment['trackingNumber'] if spree_shipment.tracking.blank?
-        spree_shipment&.update_columns(attrs)
+        begin
+          spree_shipment&.update_attributes_and_order(attrs)
+        rescue
+          Rails.logger.warn("[ShipmentUpdateTrackingFailed] Number: #{ss_shipment['orderNumber']}, Attrs: #{attrs}")
+        end
       end
       res['shipments']&.size == PAGE_SIZE ? res['shipments']&.last&.try(:[], 'createDate') : nil
     end
