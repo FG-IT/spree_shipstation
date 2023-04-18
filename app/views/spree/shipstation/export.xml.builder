@@ -29,8 +29,7 @@ xml.Orders(pages: (@shipments.total_count / 50.0).ceil) {
           line = @line_items[inventory_unit.line_item_id]
           next if line.try(:refund_items).present?
           variant = line.variant
-          Rails.logger.info(line.to_json)
-          image_url = (variant.images.first || variant.product.images.first).try(:url, :pdp_thumbnail)
+          image_url = (variant.images.first || variant.product.images.first).try(:url, :small)
           xml.Item {
             xml.SKU variant.sku
             xml.Name [variant.product.name, variant.options_text].join(" ").try(:[], 0..198)
