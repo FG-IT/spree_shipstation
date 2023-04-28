@@ -8,6 +8,7 @@ require "spree_shipstation/engine"
 require "spree_shipstation/configuration"
 require "spree_shipstation/errors"
 require "spree_shipstation/shipment_notice"
+require "http"
 
 module SpreeShipstation
   class << self
