@@ -1,6 +1,12 @@
 module SpreeShipstation
   class ShipmentSyncer
     PAGE_SIZE = 100
+    SATE_MAP = {
+      pending: :unpaid,
+      ready: :paid,
+      shipped: :shipped,
+      cancelled: :cancelled,
+    }
     def initialize(shipstation_account)
       @shipstation_account = shipstation_account
       @api_key = shipstation_account.api_key
@@ -42,6 +48,7 @@ module SpreeShipstation
       p['storeId'] = @shipstation_account.shipstation_store_id if @shipstation_account.shipstation_store_id.present?
       p
     end
+
 
     def process_response(res)
       res['shipments']&.each do |ss_shipment|

@@ -26,11 +26,30 @@ module SpreeShipstation
       end
     end
 
-    private 
-      def set_rate_limit_info(headers)
-        @x_rate_limit_limit = headers['X-Rate-Limit-Limit'].to_i
-        @x_rate_limit_remaining = headers['X-Rate-Limit-Remaining'].to_i
-        @x_rate_limit_reset = headers['X-Rate-Limit-Reset'].to_i
+    def create_order(params)
+      path = 'orders/createorder'
+      post_action(path, params)
+    end
+
+    def post_action(path, params)
+      url = URI("#{END_POINT}/#{path}")
+      json_payload = JSON.generate(params)
+      request = Net::HTTP::Post.new(url)
+      request['Content-Type'] = 'application/json'
+      request.body = json_payload
+      request.basic_auth(:user => @api_key, :pass => @api_secret)
+      set_rate_limit_info(request.headers.to_h)
+      res = ::Net::HTTP.start(url.hostname, url.port, use_ssl: true) do |http|
+        http.request(request)
       end
+      res.status.success?
+    end
+
+    private 
+    def set_rate_limit_info(headers)
+      @x_rate_limit_limit = headers['X-Rate-Limit-Limit'].to_i
+      @x_rate_limit_remaining = headers['X-Rate-Limit-Remaining'].to_i
+      @x_rate_limit_reset = headers['X-Rate-Limit-Reset'].to_i
+    end
   end
 end
