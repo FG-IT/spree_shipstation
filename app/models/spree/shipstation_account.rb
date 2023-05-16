@@ -56,6 +56,16 @@ module Spree
         end
       end
 
+      def create_shipment_orders_by_number(number)
+        shipment = ::Spree::Shipment.includes([{order: {ship_address: [:state, :country], bill_address: [:state, :country]}, selected_shipping_rate: :shipping_method}, :inventory_units]).ready.where(number: number)
+
+        line_item_ids = ::Spree::InventoryUnit.where(shipment_id: shipment.id).map {|inventory_unit| inventory_unit.line_item_id }
+        @line_items = ::Hash[ ::Spree::LineItem.includes([{variant: [{option_values: :option_type}, :product, :images]}, :refund_items]).where(id: line_item_ids).map do |line_item|
+          [line_item.id, line_item] 
+        end ]
+        create_shipstation_order_by_shipments([shipment])
+      end
+
       def api_client
         shipstation_account ||= ::Spree::ShipstationAccount.where(username: 'everymarket').last
         api_key ||= shipstation_account.api_key
@@ -133,7 +143,6 @@ module Spree
       end
 
       def get_shipment_params(shipment)
-        # TODO: now only support one shipment in the order.
         order = shipment.order
         {
           orderNumber: shipment.number,
