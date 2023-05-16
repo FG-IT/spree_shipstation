@@ -26,6 +26,11 @@ module SpreeShipstation
       end
     end
 
+    def create_orders(params)
+      path = 'orders/createorders'
+      post_action(path, params)
+    end
+
     def create_order(params)
       path = 'orders/createorder'
       post_action(path, params)
@@ -35,14 +40,15 @@ module SpreeShipstation
       url = URI("#{END_POINT}/#{path}")
       json_payload = JSON.generate(params)
       request = Net::HTTP::Post.new(url)
+      request["Host"] = "ssapi.shipstation.com"
+      https = Net::HTTP.new(url.host, url.port)
+      https.use_ssl = true
+      add_auth(request)
       request['Content-Type'] = 'application/json'
       request.body = json_payload
-      request.basic_auth(:user => @api_key, :pass => @api_secret)
-      set_rate_limit_info(request.headers.to_h)
-      res = ::Net::HTTP.start(url.hostname, url.port, use_ssl: true) do |http|
-        http.request(request)
-      end
-      res.status.success?
+      set_post_rate_limit_info(request)
+      response = https.request(request)
+      response.read_body
     end
 
     private 
@@ -50,6 +56,18 @@ module SpreeShipstation
       @x_rate_limit_limit = headers['X-Rate-Limit-Limit'].to_i
       @x_rate_limit_remaining = headers['X-Rate-Limit-Remaining'].to_i
       @x_rate_limit_reset = headers['X-Rate-Limit-Reset'].to_i
+    end
+
+    def set_post_rate_limit_info(request)
+      request.add_field("X-Rate-Limit-Limit", 40)
+      request.add_field("X-Rate-Limit-Remaining", 0)
+      request.add_field("X-Rate-Limit-Reset", 20)
+    end
+
+    def add_auth(request)
+      credentials = "#{@api_key}:#{@api_secret}"
+      encoded_credentials = Base64.strict_encode64(credentials)
+      request["Authorization"] = "Basic #{encoded_credentials}"
     end
   end
 end

@@ -17,7 +17,7 @@ module Spree
       DATE_FORMAT = '%Y-%m-%d'
       STATE_MAP = {
         pending: :unpaid,
-        ready: :paid,
+        ready: :awaiting_shipment,
         shipped: :shipped,
         cancelled: :cancelled
       }
@@ -31,38 +31,52 @@ module Spree
       end
 
       def update_shipment_forward_status
-        ::Spree::Shipment.includes([{order: {ship_address: [:state, :country], bill_address: [:state, :country]}, selected_shipping_rate: :shipping_method}, :inventory_units]).ready.where(forward: nil).order(:created_at).find_in_batches(batch_size: 50) do |shipments|
+        ::Spree::Shipment.includes([{order: {ship_address: [:state, :country], bill_address: [:state, :country]}, selected_shipping_rate: :shipping_method}, :inventory_units]).ready.where(forward: nil, shipstation_order_id: nil).order(:created_at).find_in_batches(batch_size: 10) do |shipments|
           shipment_ids = shipments.map {|shipment| shipment.id }
 
           line_item_ids = ::Spree::InventoryUnit.where(shipment_id: shipment_ids).map {|inventory_unit| inventory_unit.line_item_id }
           @line_items = ::Hash[ ::Spree::LineItem.includes([{variant: [{option_values: :option_type}, :product, :images]}, :refund_items]).where(id: line_item_ids).map do |line_item|
             [line_item.id, line_item] 
           end ]
-          shipments&.each do |shipment|
+          shipments.each do |shipment|
             shipment.update(forward: check_de_forward(shipment))
           end
         end
       end
 
       def create_shipment_orders
-        ::Spree::Shipment.includes([{order: {ship_address: [:state, :country], bill_address: [:state, :country]}, selected_shipping_rate: :shipping_method}, :inventory_units]).ready.where(forward: true).order(:created_at).find_in_batches(batch_size: 50) do |shipments|
-          shipment_ids = shipments.map {|shipment| shipment.id }
+        ::Spree::Shipment.includes([{order: {ship_address: [:state, :country], bill_address: [:state, :country]}, selected_shipping_rate: :shipping_method}, :inventory_units]).ready.where(forward: true, shipstation_order_id: nil).find_in_batches(batch_size: 10) do |shipments|
+          shipment_ids = shipments.map {|shipment| shipment.id}
 
           line_item_ids = ::Spree::InventoryUnit.where(shipment_id: shipment_ids).map {|inventory_unit| inventory_unit.line_item_id }
           @line_items = ::Hash[ ::Spree::LineItem.includes([{variant: [{option_values: :option_type}, :product, :images]}, :refund_items]).where(id: line_item_ids).map do |line_item|
             [line_item.id, line_item] 
           end ]
-          shipments&.each do |shipment|
-            create_shipstation_order_by_shipment(shipment)
-          end
+          create_shipstation_order_by_shipments(shipments)
         end
       end
 
-      def create_shipstation_order_by_shipment(shipment)
-        params = get_shipment_params(shipment)
-        Rails.logger.info("[params:]#{params.inspect}")
-        # res = @api_client.create_order(params)
-        # shipment.update(create_shipstation_order: true) if res
+      def api_client
+        shipstation_account ||= ::Spree::ShipstationAccount.where(username: 'everymarket').last
+        api_key ||= shipstation_account.api_key
+        api_secret ||= shipstation_account.api_secret
+        api_client ||= ::SpreeShipstation::Api.new(api_key, api_secret)
+        api_client
+      end
+
+      def create_shipstation_order_by_shipments(shipments)
+        params = shipments.map do |shipment|
+          get_shipment_params(shipment)
+        end
+        res = api_client.create_orders(params)
+        update_shipments_by_res(res, shipments)
+      end
+
+      def update_shipments_by_res(res, shipments)
+        shipments.each do |shipment|
+          result = res&['results']&.find { |result| result['orderNumber'] == shipment.number }
+          shipment.update(shipstation_order_id: result['orderId']) if result&['success']
+        end
       end
 
       def convert_address(address)
@@ -71,8 +85,11 @@ module Spree
           company: address.company,
           street1: address.address1,
           street2: address.address2,
+          street3: nil,
           city: address.city,
           state: address.state ? address.state.abbr : address.state_name,
+          country: 'US',
+          residential: true,
           postalCode: address.zipcode,
           phone: address.phone
         }
@@ -119,13 +136,10 @@ module Spree
         # TODO: now only support one shipment in the order.
         order = shipment.order
         {
-          orderId: shipment.id,
           orderNumber: shipment.number,
           orderDate: order.completed_at.strftime(DATE_FORMAT),
           customerEmail: order.email,
-          lastModified: [order.updated_at, order.approved_at, shipment.updated_at].compact.max.strftime(DATE_FORMAT),
-          ShippingMethod: shipment.shipping_method.try(:name),
-          OrderTotal: order.total,
+          orderTotal: order.total,
           taxAmount: order.tax_total,
           shippingAmount: order.ship_total,
           items: get_shipment_items(shipment),
