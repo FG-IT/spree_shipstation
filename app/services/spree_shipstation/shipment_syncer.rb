@@ -6,7 +6,7 @@ module SpreeShipstation
       @api_key = shipstation_account.api_key
       @api_secret = shipstation_account.api_secret
       @api_client = SpreeShipstation::Api.new(@api_key, @api_secret)
-      @last_create_on = ((@shipstation_account.shipments_sync_until || Spree::Order.minimum(:created_at)) - 2.days).to_formatted_s(:iso8601)
+      @last_create_on = ((@shipstation_account.shipments_sync_until || ::Spree::Order.minimum(:created_at)) - 2.days).to_formatted_s(:iso8601)
       @page = 1
     end
 
@@ -45,7 +45,7 @@ module SpreeShipstation
 
     def process_response(res)
       res['shipments']&.each do |ss_shipment|
-        spree_shipment = Spree::Shipment.find_by(number: ss_shipment['orderNumber'])
+        spree_shipment = ::Spree::Shipment.find_by(number: ss_shipment['orderNumber'])
         next if spree_shipment.blank?
         attrs = { actual_cost: ss_shipment['shipmentCost'] }
         attrs[:carrier] = get_carrier(ss_shipment['carrierCode'], ss_shipment['serviceCode']) if spree_shipment.carrier.blank?

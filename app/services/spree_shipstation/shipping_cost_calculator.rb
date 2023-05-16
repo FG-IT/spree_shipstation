@@ -5,12 +5,12 @@ module SpreeShipstation
       def update_daily_statistics(from_date, to_date = Date.today)
         data = calculate(from_date, to_date)
         data.each do |date, costs|
-          Spree::DailyStatistic.update_daily_statistic(date, DAILY_STATISTIC_LABEL, costs, -1)
+          ::Spree::DailyStatistic.update_daily_statistic(date, DAILY_STATISTIC_LABEL, costs, -1)
         end
       end
 
       def calculate(from_date, to_date = Date.today)
-        orders = Spree::Order.select(:id, :completed_at).includes(:shipments).completed_between(from_date.to_date.beginning_of_day, to_date.to_date.end_of_day)
+        orders = ::Spree::Order.select(:id, :completed_at).includes(:shipments).completed_between(from_date.to_date.beginning_of_day, to_date.to_date.end_of_day)
         orders.group_by do |order|
           order.completed_at.to_date
         end.map do |date, orders|
