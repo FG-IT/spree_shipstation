@@ -4,6 +4,7 @@ module Spree
   module ShipmentDecorator
     def self.prepended(base)
       base.singleton_class.prepend ClassMethods
+      base.has_one :shipstation_order, foreign_key: :shipment_id, class_name: 'Spree::ShipstationOrder', dependent: :destroy
     end
 
     module ClassMethods

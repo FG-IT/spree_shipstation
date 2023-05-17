@@ -80,8 +80,9 @@ module SpreeShipstation
     def create_shipment_orders
       return unless @api_key.nil? || @api_secret.nil?
 
-      ::Spree::Shipment.includes([{order: {ship_address: [:state, :country], bill_address: [:state, :country]}, selected_shipping_rate: :shipping_method}, :inventory_units]).ready.where(forward: true, shipstation_order_id: nil).find_in_batches(batch_size: 10) do |shipments|
-        shipment_ids = shipments.map {|shipment| shipment.id}
+      ::Spree::ShipstationOrder.where(order_id: nil).find_in_batches(batch_size: 10).pluck(:shipment_id) do |shipment_ids|
+        shipments = ::Spree::Shipment.includes([{order: {ship_address: [:state, :country], bill_address: [:state, :country]}, selected_shipping_rate: :shipping_method}, :inventory_units]).ready.where(id: shipment_ids).all
+        next if shipments.blank?
 
         line_item_ids = ::Spree::InventoryUnit.where(shipment_id: shipment_ids).map {|inventory_unit| inventory_unit.line_item_id }
         @line_items = ::Hash[ ::Spree::LineItem.includes([{variant: [{option_values: :option_type}, :product, :images]}, :refund_items]).where(id: line_item_ids).map do |line_item|
@@ -96,7 +97,7 @@ module SpreeShipstation
         get_shipment_params(shipment)
       end
       res = @api_client.create_orders(params)
-      update_shipments_by_res(res, shipments) if res && res['results']
+      update_shipstation_order_ids_by_res(res, shipments) if res && res['results']
       wait
     end
 
@@ -112,10 +113,10 @@ module SpreeShipstation
       p
     end
 
-    def update_shipments_by_res(res, shipments)
+    def update_shipstation_order_ids_by_res(res, shipments)
       shipments.each do |shipment|
         result = res['results'].find { |result| result['orderNumber'] == shipment.number }
-        shipment.update(shipstation_order_id: result['orderId']) if result && result['success']
+        shipment.shipstation_order.update(order_id: result['orderId']) if result && result['success']
       end
     end
 
