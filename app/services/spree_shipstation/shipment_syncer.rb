@@ -40,30 +40,6 @@ module SpreeShipstation
       end
     end
 
-    class << self
-      def update_shipment_forward_status
-        ::Spree::Shipment.includes([{order: {ship_address: [:state, :country], bill_address: [:state, :country]}, selected_shipping_rate: :shipping_method}, :inventory_units]).ready.where(forward: nil, shipstation_order_id: nil).order(:created_at).find_in_batches(batch_size: 10) do |shipments|
-          shipment_ids = shipments.map {|shipment| shipment.id }
-
-          line_item_ids = ::Spree::InventoryUnit.where(shipment_id: shipment_ids).map {|inventory_unit| inventory_unit.line_item_id }
-          line_items = ::Hash[ ::Spree::LineItem.includes([{variant: [{option_values: :option_type}, :product, :images]}, :refund_items]).where(id: line_item_ids).map do |line_item|
-            [line_item.id, line_item] 
-          end ]
-          shipments.each do |shipment|
-            shipment.update(forward: check_de_forward(shipment, line_items))
-          end
-        end
-      end
-
-      def check_de_forward(shipment, line_items)
-        shipment.inventory_units.map do |inventory_unit|
-          line = line_items[inventory_unit.line_item_id]
-          return false unless line.sku.start_with?('AMZ_DE')
-        end
-        true
-      end
-    end
-
     def create_shipment_order_by_number(number)
       return if @api_key.nil? || @api_secret.nil?
 
@@ -78,9 +54,10 @@ module SpreeShipstation
     end
 
     def create_shipment_orders
-      return unless @api_key.nil? || @api_secret.nil?
+      return if @api_key.nil? || @api_secret.nil?
 
-      ::Spree::ShipstationOrder.where(order_id: nil).find_in_batches(batch_size: 10).pluck(:shipment_id) do |shipment_ids|
+      ::Spree::ShipstationOrder.where(order_id: nil, needed: true).find_in_batches(batch_size: 10) do |shipstation_orders|
+        shipment_ids = shipstation_orders.pluck(:shipment_id)
         shipments = ::Spree::Shipment.includes([{order: {ship_address: [:state, :country], bill_address: [:state, :country]}, selected_shipping_rate: :shipping_method}, :inventory_units]).ready.where(id: shipment_ids).all
         next if shipments.blank?
 
