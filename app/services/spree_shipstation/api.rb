@@ -4,7 +4,6 @@ module SpreeShipstation
 
     attr_reader :api_key, :api_secret, :x_rate_limit_limit, 
                 :x_rate_limit_remaining, :x_rate_limit_reset
-    
     def initialize(api_key, api_secret)
       @api_key = api_key
       @api_secret = api_secret
@@ -40,15 +39,18 @@ module SpreeShipstation
       url = URI("#{END_POINT}/#{path}")
       json_payload = JSON.generate(params)
       request = Net::HTTP::Post.new(url)
-      request["Host"] = "ssapi.shipstation.com"
       https = Net::HTTP.new(url.host, url.port)
       https.use_ssl = true
       add_auth(request)
       request['Content-Type'] = 'application/json'
       request.body = json_payload
-      set_post_rate_limit_info(request)
       response = https.request(request)
-      response.read_body
+      set_rate_limit_info(response.header)
+      if response.code.to_i >= 200 && response.code.to_i < 300
+        JSON.parse(response.read_body)
+      else
+        false
+      end
     end
 
     private 
@@ -56,12 +58,6 @@ module SpreeShipstation
       @x_rate_limit_limit = headers['X-Rate-Limit-Limit'].to_i
       @x_rate_limit_remaining = headers['X-Rate-Limit-Remaining'].to_i
       @x_rate_limit_reset = headers['X-Rate-Limit-Reset'].to_i
-    end
-
-    def set_post_rate_limit_info(request)
-      request.add_field("X-Rate-Limit-Limit", 40)
-      request.add_field("X-Rate-Limit-Remaining", 0)
-      request.add_field("X-Rate-Limit-Reset", 20)
     end
 
     def add_auth(request)

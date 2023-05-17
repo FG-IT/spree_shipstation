@@ -2,9 +2,9 @@ module SpreeShipstation
   class SyncShipmentJob < ApplicationJob
     queue_as :default
 
-    def perform(shipstation_id)
-      shipstation_account = Spree::ShipstationAccount.find(shipstation_id)
-      SpreeShipstation::ShipmentSyncer.new(shipstation_account).create_forward_orders
+    def perform
+      shipstation_account = ::Spree::ShipstationAccount.where(username: 'everymarket').last
+      SpreeShipstation::ShipmentSyncer.new(shipstation_account).create_shipment_orders if shipstation_account.present?
     end
   end
 end
