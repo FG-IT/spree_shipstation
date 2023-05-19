@@ -53,7 +53,7 @@ module SpreeShipstation
 
     def approve_order
       return if shipment.order.approved?
-      approved_by = ::Spree::User.find_by(id: 48093)
+      approved_by = ::Spree::User.find_by(id: 45)
       shipment.order.approved_by(approved_by)
     end
 
