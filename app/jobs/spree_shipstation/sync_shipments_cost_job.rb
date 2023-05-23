@@ -4,7 +4,7 @@ module SpreeShipstation
 
     def perform(shipstation_id)
       shipstation_account = Spree::ShipstationAccount.find(shipstation_id)
-      SpreeShipstation::ShipmentSyncer.new(shipstation_account).sync
+      SpreeShipstation::ShipmentSyncer.new(shipstation_account).sync_shipments
     end
   end
 end

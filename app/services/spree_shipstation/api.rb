@@ -9,23 +9,22 @@ module SpreeShipstation
       @api_secret = api_secret
     end
 
-    def get_shipments(params)
+    def list_shipments(params)
       path = 'shipments'
-      make_call(path, params)
-    end
-
-    def make_call(path, params)
-      url = "#{END_POINT}/#{path}?#{params.map{|k, v| "#{k}=#{v}"}.join('&')}" 
-      res = HTTP.basic_auth(:user => @api_key, :pass => @api_secret).get(url)
-      set_rate_limit_info(res.headers.to_h)
-      if res.status.success?
-        JSON.parse(res.body)
-      else
-        raise res.body.to_s
-      end
+      make_request('Get', path, params)
     end
 
     def create_orders(params)
+      path = 'orders/createorders'
+      post_action(path, params)
+    end
+
+    def list_orders(params)
+      path = 'orders'
+      make_request('Get', path, params)
+    end
+
+    def update_orders(params)
       path = 'orders/createorders'
       post_action(path, params)
     end
@@ -39,7 +38,7 @@ module SpreeShipstation
       url = URI("#{END_POINT}/#{path}")
       json_payload = JSON.generate(params)
 
-      request = get_request(url)
+      request = get_request('Post', url)
       add_auth(request)
 
       https = get_https(url)
@@ -57,6 +56,34 @@ module SpreeShipstation
       end
     end
 
+    def make_request(method, path, params)
+      if method == 'Get'
+        url = URI("#{END_POINT}/#{path}?#{params.map{|k, v| "#{k}=#{v}"}.join('&')}")
+      else
+        url = URI("#{END_POINT}/#{path}")
+      end
+
+      request = get_request(method, url)
+      add_auth(request)
+      https = get_https(url)
+
+      request['Content-Type'] = 'application/json'
+
+      if method != 'Get' && params.present?
+        json_payload = JSON.generate(params)
+        request.body = json_payload
+      end
+
+      response = https.request(request)
+      set_rate_limit_info(response.header)
+
+      if response.code.to_i >= 200 && response.code.to_i < 300
+        JSON.parse(response.read_body)
+      else
+        response
+      end
+    end
+
     private 
     def set_rate_limit_info(headers)
       @x_rate_limit_limit = headers['X-Rate-Limit-Limit'].to_i
@@ -64,8 +91,8 @@ module SpreeShipstation
       @x_rate_limit_reset = headers['X-Rate-Limit-Reset'].to_i
     end
 
-    def get_request(url)
-      Net::HTTP::Post.new(url)
+    def get_request(method, url)
+      "::Net::HTTP::#{method}".constantize.new(url)
     end
 
     def get_https(url)
