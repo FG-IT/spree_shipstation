@@ -56,17 +56,63 @@ module SpreeShipstation
     def create_shipment_orders
       return if @api_key.nil? || @api_secret.nil?
 
-      ::Spree::ShipstationOrder.where(order_id: nil, needed: true).find_in_batches(batch_size: 10) do |shipstation_orders|
+      ::Spree::ShipstationOrder.where(order_id: nil, needed: true).find_in_batches(batch_size: 1000) do |shipstation_orders|
         shipment_ids = shipstation_orders.pluck(:shipment_id)
         shipments = ::Spree::Shipment.includes([{order: {ship_address: [:state, :country], bill_address: [:state, :country]}, selected_shipping_rate: :shipping_method}, :inventory_units]).ready.where(id: shipment_ids).all
         next if shipments.blank?
 
         line_item_ids = ::Spree::InventoryUnit.where(shipment_id: shipment_ids).map {|inventory_unit| inventory_unit.line_item_id }
-        @line_items = ::Hash[ ::Spree::LineItem.includes([{variant: [{option_values: :option_type}, :product, :images]}, :refund_items]).where(id: line_item_ids).map do |line_item|
+        line_items = ::Hash[ ::Spree::LineItem.includes([{variant: [{option_values: :option_type}, :product, :images]}, :refund_items]).where(id: line_item_ids).map do |line_item|
           [line_item.id, line_item] 
         end ]
-        create_shipstation_order_by_shipments(shipments)
+
+        entries = []
+        shipments.each do |shipment|
+          order = shipment.order
+          lis = shipment.inventory_units.map do |inventory_unit|
+            li = line_items.fetch(inventory_unit.line_item_id, nil)
+            next if li.blank? || li.try(:refund_items).present?
+          end.compact
+          next if lis.blank?
+
+          entries << {
+            shipment: shipment,
+            shipstation_order_params: {
+              orderNumber: shipment.number,
+              orderDate: order.completed_at.strftime(DATE_FORMAT),
+              customerEmail: order.email,
+              orderTotal: order.total,
+              taxAmount: order.tax_total,
+              shippingAmount: order.ship_total,
+              items: get_shipment_items(lis),
+              shipTo: convert_address(order.ship_address),
+              billTo: convert_address(order.bill_address),
+              orderStatus: STATE_MAP[shipment.state.to_sym],
+              amountPaid: shipment.order.payment_total
+            }
+          }
+        end
+
+        entries.each_slice(10) do |entries_buf|
+          params = entries_buf.map {|entry| entry[:shipstation_order_params] }
+          res = create_shipstation_orders(params)
+
+          next unless res.present? && res['results']
+
+          shipments_h = ::Hash[ entries_buf.map {|entry| [entry[:shipment].number, entry[:shipment]] } ]
+          res['results'].each do |resp|
+            shipment = shipments_h.fetch(resp['orderNumber'], nil)
+            next if shipment.blank?
+
+            shipment.shipstation_order.update()
+            ::Spree::ShipstationOrder.update(order_id: resp['orderId']).where(shipment_id: shipment.id)
+          end
+        end
       end
+    end
+
+    def create_shipstation_orders(params)
+      @api_client.create_orders(params)
     end
 
     def create_shipstation_order_by_shipments(shipments)
@@ -112,23 +158,23 @@ module SpreeShipstation
       }
     end
 
-    def get_shipment_items(shipment)
-      shipment.inventory_units.map do |inventory_unit|
-        line = @line_items[inventory_unit.line_item_id]
-        next if line.try(:refund_items).present?
+    def get_shipment_items(line_items)
+      line_items.map do |line|
         variant = line.variant
         image_url = (variant.images.first || variant.product.images.first).try(:url, :pdp_thumbnail)
         item = {
           sku: variant.sku,
           name: [variant.product.name, variant.options_text].join(" ").try(:[], 0..198),
           imageUrl: image_url.present? ? image_url : '',
-          weight: {
-            value: variant.weight.to_f,
-            units: SpreeShipstation.configuration.weight_units
-          },
           quantity: line.quantity,
           unitPrice: line.price,
         }
+        if variant.weight.present? && variant.weight.to_f > 0
+          item[:weight] = {
+            value: variant.weight.to_f,
+            units: ::SpreeShipstation.configuration.weight_units
+          }]
+        end
 
         if variant.option_values.present?
           item = item.merge({
@@ -140,26 +186,27 @@ module SpreeShipstation
             end
           })
         end
+
         item
-      end
+      end.compact
     end
 
-    def get_shipment_params(shipment)
-      order = shipment.order
-      {
-        orderNumber: shipment.number,
-        orderDate: order.completed_at.strftime(DATE_FORMAT),
-        customerEmail: order.email,
-        orderTotal: order.total,
-        taxAmount: order.tax_total,
-        shippingAmount: order.ship_total,
-        items: get_shipment_items(shipment),
-        shipTo: convert_address(order.ship_address),
-        billTo: convert_address(order.bill_address),
-        orderStatus: STATE_MAP[shipment.state.to_sym],
-        amountPaid: shipment.order.payment_total
-      }
-    end
+    # def get_shipment_params(shipment)
+    #   order = shipment.order
+    #   {
+    #     orderNumber: shipment.number,
+    #     orderDate: order.completed_at.strftime(DATE_FORMAT),
+    #     customerEmail: order.email,
+    #     orderTotal: order.total,
+    #     taxAmount: order.tax_total,
+    #     shippingAmount: order.ship_total,
+    #     items: get_shipment_items(shipment),
+    #     shipTo: convert_address(order.ship_address),
+    #     billTo: convert_address(order.bill_address),
+    #     orderStatus: STATE_MAP[shipment.state.to_sym],
+    #     amountPaid: shipment.order.payment_total
+    #   }
+    # end
 
     def process_response(res)
       res['shipments']&.each do |ss_shipment|
