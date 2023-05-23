@@ -71,7 +71,16 @@ module SpreeShipstation
           order = shipment.order
           lis = shipment.inventory_units.map do |inventory_unit|
             li = line_items.fetch(inventory_unit.line_item_id, nil)
-            next if li.blank? || li.try(:refund_items).present?
+            if li.blank?
+              Rails.logger.info("[LineItemNotFound] Shipment: #{shipment.number}, LineItemID: #{inventory_unit.line_item_id}")
+              next
+            end
+            if li.try(:refund_items).present?
+              Rails.logger.info("[LineItemRefuned] Shipment: #{shipment.number}, LineItemID: #{inventory_unit.line_item_id}")
+              next
+            end
+            # next if li.blank? || li.try(:refund_items).present?
+            li
           end.compact
           next if lis.blank?
 
@@ -97,6 +106,8 @@ module SpreeShipstation
           params = entries_buf.map {|entry| entry[:shipstation_order_params] }
           res = create_shipstation_orders(params)
 
+          Rails.logger.info("[ShipstationResponse] #{res}")
+
           next unless res.present? && res['results']
 
           shipments_h = ::Hash[ entries_buf.map {|entry| [entry[:shipment].number, entry[:shipment]] } ]
@@ -104,9 +115,10 @@ module SpreeShipstation
             shipment = shipments_h.fetch(resp['orderNumber'], nil)
             next if shipment.blank?
 
-            shipment.shipstation_order.update()
-            ::Spree::ShipstationOrder.update(order_id: resp['orderId']).where(shipment_id: shipment.id)
+            shipment.shipstation_order&.update(order_id: resp['orderId'])
           end
+
+          wait
         end
       end
     end
@@ -173,7 +185,7 @@ module SpreeShipstation
           item[:weight] = {
             value: variant.weight.to_f,
             units: ::SpreeShipstation.configuration.weight_units
-          }]
+          }
         end
 
         if variant.option_values.present?
