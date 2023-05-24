@@ -7,9 +7,9 @@ module Spree
     before_action :authenticate_shipstation
 
     def export
-      @shipments = ::Spree::Shipment.includes([{order: {ship_address: [:state, :country], bill_address: [:state, :country]}, selected_shipping_rate: :shipping_method}, :inventory_units])
-        .where(stock_location_id: @shipstation_account.stock_location_ids)
-        .exportable(@shipstation_account.orders_need_approval)
+      store_id = params[:store_id]
+      @shipments = ::Spree::Shipment.joins(:shipstation_order).where(shipstation_order: {needed: true, shipstation_account_id: store_id})
+        .includes([{order: {ship_address: [:state, :country], bill_address: [:state, :country]}, selected_shipping_rate: :shipping_method}, :inventory_units])
         .between(date_param(:start_date), date_param(:end_date))
         .page(params[:page])
         .per(50)

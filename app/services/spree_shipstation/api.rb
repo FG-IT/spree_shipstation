@@ -29,6 +29,11 @@ module SpreeShipstation
       post_action(path, params)
     end
 
+    def delete_order(order_id)
+      path = "orders/#{order_id}"
+      make_request('Delete', path, {})
+    end
+
     def create_order(params)
       path = 'orders/createorder'
       post_action(path, params)
