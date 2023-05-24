@@ -5,6 +5,7 @@ xml.instruct!
 xml.Orders(pages: (@shipments.total_count / 50.0).ceil) {
   @shipments.each do |shipment|
     order = shipment.order
+    next unless order.completed?
 
     xml.Order {
       xml.OrderID shipment.id
