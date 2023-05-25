@@ -213,6 +213,7 @@ module SpreeShipstation
         item = {
           shipment: shipment,
           shipstation_order_params: {
+            orderId: shipment.id,
             orderNumber: shipment.number,
             orderDate: order.completed_at.strftime(DATE_FORMAT),
             customerEmail: order.email,
