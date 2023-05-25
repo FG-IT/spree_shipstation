@@ -11,6 +11,7 @@ module Spree
       @shipments = ::Spree::Shipment.joins(:shipstation_order).where(shipstation_order: {needed: true, shipstation_account_id: store_id})
         .includes([{order: {ship_address: [:state, :country], bill_address: [:state, :country]}, selected_shipping_rate: :shipping_method}, :inventory_units])
         .between(date_param(:start_date), date_param(:end_date))
+        .order('spree_shipments.created_at desc')
         .page(params[:page])
         .per(50)
 

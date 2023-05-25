@@ -85,41 +85,108 @@ module SpreeShipstation
       end
     end
 
-    def sync_shipment_orders(params)
-      res = list_shipstation_orders(params)
-      Rails.logger.debug("[ListOrdersResp] #{res}")
+    def sync_shipment_orders(params={})
+      dft_params = {
+        page: 1,
+        pageSize: PAGE_SIZE,
+        createDateStart: 7.days.ago.strftime('%Y-%m-%d'),
+        sortBy: 'CreateDate',
+      }
 
-      return unless res.present? && res['orders'].present?
+      filter = {}
+      filter.merge!(dft_params, params)
+      filter[:storeId] = @shipstation_account.shipstation_store_id if @shipstation_account.shipstation_store_id.present?
 
-      res_orders = ::Hash[ res['orders'].map {|r| [r['orderNumber'], r] } ]
-      shipment_numbers = res['orders'].map {|r| r['orderNumber'] }
-      shipments = ::Spree::Shipment.where(number: shipment_numbers)
-      shipments_mapping = ::Hash[ shipments.map {|shipment| [shipment.id, {shipment: shipment, shipstation: res_orders.fetch(shipment['number'], nil)}] } ]
-      
-      shipment_ids = shipments.map {|shipment| shipment.id }
-      ::Spree::ShipstationOrder.where(shipment_id: shipments_mapping.keys).each do |shipstation_order|
-        sm = shipments_mapping.delete(shipstation_order.shipment_id)
-        next if sm[:shipstation].blank?
+      while true do
+        res = list_shipstation_orders(filter)
+        wait
+        break if res.blank? || res['orders'].blank?
 
-        shipstation_order.update(order_id: sm[:shipstation]['orderId'], order_key: sm[:shipstation]['orderKey'])
+        res_orders = ::Hash[ res['orders'].map {|r| [r['orderNumber'], r] } ]
+        shipment_numbers = res['orders'].map {|r| r['orderNumber'] }
+        shipments = ::Spree::Shipment.where(number: shipment_numbers)
+        shipments_mapping = ::Hash[ shipments.map {|shipment| [shipment.id, {shipment: shipment, shipstation: res_orders.fetch(shipment['number'], nil)}] } ]
+        
+        shipment_ids = shipments.map {|shipment| shipment.id }
+        ::Spree::ShipstationOrder.where(shipment_id: shipments_mapping.keys).each do |shipstation_order|
+          sm = shipments_mapping.delete(shipstation_order.shipment_id)
+          next if sm[:shipstation].blank?
+
+          shipstation_order.update(order_id: sm[:shipstation]['orderId'], order_key: sm[:shipstation]['orderKey'])
+        end
+
+        return if shipments_mapping.blank?
+
+        shipstation_orders_arr = shipments_mapping.values.map do |sm|
+          next if sm[:shipstation].blank?
+          {
+            shipment_id: sm[:shipment].id,
+            order_id: sm[:shipstation]['orderId'],
+            order_key: sm[:shipstation]['orderKey'],
+            needed: true,
+            created_at: sm[:shipstation]['createDate'],
+            updated_at: sm[:shipstation]['modifyDate']
+          }
+        end.compact
+        ::Spree::ShipstationOrder.insert_all(shipstation_orders_arr)
+
+        pages = res.fetch('pages', 1)
+        break if filter[:page] >= pages
+
+        filter[:page] += 1
       end
+    end
 
-      return if shipments_mapping.blank?
+    def clean_shipment_orders(params={})
+      dft_params = {
+        page: 1,
+        pageSize: PAGE_SIZE,
+        createDateStart: 7.days.ago.strftime('%Y-%m-%d'),
+        sortBy: 'CreateDate',
+      }
 
-      shipstation_orders_arr = shipments_mapping.values.map do |sm|
-        next if sm[:shipstation].blank?
-        {
-          shipment_id: sm[:shipment].id,
-          order_id: sm[:shipstation]['orderId'],
-          order_key: sm[:shipstation]['orderKey'],
-          needed: true,
-          created_at: sm[:shipstation]['createDate'],
-          updated_at: sm[:shipstation]['modifyDate']
-        }
-      end.compact
-      ::Spree::ShipstationOrder.insert_all(shipstation_orders_arr)
+      filter = {}
+      filter.merge!(dft_params, params)
+      filter[:storeId] = @shipstation_account.shipstation_store_id if @shipstation_account.shipstation_store_id.present?
 
-      res
+      ssas = ::Hash[ ::Spree::ShipstationAccount.active.map {|ssa|[ssa.id, ssa] } ]
+
+      while true do
+        res = list_shipstation_orders(filter)
+        wait
+        break if res.blank? || res['orders'].blank?
+
+        res_orders = ::Hash[ res['orders'].map {|r| [r['orderNumber'], r] } ]
+        shipment_numbers = res['orders'].map {|r| r['orderNumber'] }
+        shipments = ::Spree::Shipment.where(number: shipment_numbers)
+        shipments_mapping = ::Hash[ shipments.map {|shipment| [shipment.id, {shipment: shipment, shipstation: res_orders.fetch(shipment['number'], nil)}] } ]
+        
+        ::Spree::ShipstationOrder.where(shipment_id: shipments_mapping.keys).each do |shipstation_order|
+          sm = shipments_mapping.delete(shipstation_order.shipment_id)
+          next if sm[:shipstation].blank?
+
+          if shipstation_order.needed?
+            # store_id = sm[:shipstation].fetch('advancedOptions', nil)&.fetch('storeId', nil)
+            # ssa = ssas.fetch(shipstation_order.shipstation_account_id, nil)
+            # if ssa.present?
+            #   if store_id != ssa.shipstation_store_id
+            #     # TODO: Update shipstation order
+            #   else
+            #     shipstation_order.update(order_id: sm[:shipstation]['orderId'], order_key: sm[:shipstation]['orderKey'])
+            #   end
+            # end
+          else
+            r = delete_shipstation_order(sm[:shipstation]['orderId'])
+            Rails.logger.info("[ShipstationOrderDeletion] Response: #{r}, OrderID: #{sm[:shipstation]['orderId']}, OrderNumber: #{sm[:shipstation][:orderNumber]}")
+            wait
+          end
+        end
+
+        pages = res.fetch('pages', 1)
+        break if filter[:page] >= pages
+
+        filter[:page] += 1
+      end
     end
 
     def process_shipstation_orders(shipstation_orders)
@@ -217,6 +284,10 @@ module SpreeShipstation
 
     def list_shipstation_shipments(params)
       @api_client.list_shipments(params)
+    end
+
+    def delete_shipstation_order(order_id)
+      @api_client.delete_order(order_id)
     end
 
     def convert_address(address)
