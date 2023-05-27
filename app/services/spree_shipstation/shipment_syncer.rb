@@ -30,7 +30,7 @@ module SpreeShipstation
     def create_shipment_orders
       return if @api_key.nil? || @api_secret.nil?
 
-      ::Spree::ShipstationOrder.where(order_id: nil, needed: true).find_in_batches(batch_size: 1000) do |shipstation_orders|
+      ::Spree::ShipstationOrder.where(order_key: nil, needed: true, shipstation_account_id: @shipstation_account.id).find_in_batches(batch_size: 1000) do |shipstation_orders|
         process_shipstation_orders(shipstation_orders)
       end
     end
@@ -38,8 +38,8 @@ module SpreeShipstation
     def update_shipment_orders
       return if @api_key.nil? || @api_secret.nil?
 
-      ::Spree::ShipstationOrder.where.not(order_id: nil).find_in_batches(batch_size: 1000) do |shipstation_orders|
-        process_shipstation_orders(shipstation_orders)
+      ::Spree::ShipstationOrder.includes(:shipment).where.not(order_key: nil).where(needed: true, shipstation_account_id: @shipstation_account.id).find_in_batches(batch_size: 1000) do |shipstation_orders|
+        process_shipstation_orders(shipstation_orders.select {|sso| sso.shipment.ready_or_pending? })
       end
     end
 
@@ -213,7 +213,7 @@ module SpreeShipstation
         item = {
           shipment: shipment,
           shipstation_order_params: {
-            orderId: shipment.id,
+            # orderId: shipment.id,
             orderNumber: shipment.number,
             orderDate: order.completed_at.strftime(DATE_FORMAT),
             customerEmail: order.email,
@@ -260,10 +260,15 @@ module SpreeShipstation
 
           shipments_h = ::Hash[ entries_buf.map {|entry| [entry[:shipment].number, entry[:shipment]] } ]
           res['results'].each do |resp|
-            shipment = shipments_h.fetch(resp['orderNumber'], nil)
-            next if shipment.blank?
+            next if resp.blank? || !resp.fetch('success', false)
 
-            shipment.shipstation_order&.update(order_id: resp['orderId'], order_key: resp['orderKey'])
+            shipment = shipments_h.fetch(resp['orderNumber'], nil)
+            shipstation_order = shipment&.shipstation_order
+            next if shipment.blank? || shipstation_order.blank?
+
+            if shipstation_order.order_id != resp['orderId'] || shipstation_order.order_key != resp['orderKey'])
+              shipstation_order.update(order_id: resp['orderId'], order_key: resp['orderKey'])
+            end
           end
 
           wait
