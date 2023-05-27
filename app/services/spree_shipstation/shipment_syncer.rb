@@ -256,7 +256,7 @@ module SpreeShipstation
           end
           Rails.logger.debug("[ShipstationResponse] #{res}")
 
-          next unless res.present? && res['results']
+          next unless res.present? && res['results'].present?
 
           shipments_h = ::Hash[ entries_buf.map {|entry| [entry[:shipment].number, entry[:shipment]] } ]
           res['results'].each do |resp|
@@ -266,7 +266,7 @@ module SpreeShipstation
             shipstation_order = shipment&.shipstation_order
             next if shipment.blank? || shipstation_order.blank?
 
-            if shipstation_order.order_id != resp['orderId'] || shipstation_order.order_key != resp['orderKey'])
+            if shipstation_order.order_id != resp['orderId'] || shipstation_order.order_key != resp['orderKey']
               shipstation_order.update(order_id: resp['orderId'], order_key: resp['orderKey'])
             end
           end
