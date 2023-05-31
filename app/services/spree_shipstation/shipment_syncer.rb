@@ -2,7 +2,7 @@ module SpreeShipstation
   class ShipmentSyncer
     PAGE_SIZE = 500
     STATE_MAP = {
-      pending: :unpaid,
+      pending: :awaiting_payment,
       ready: :awaiting_shipment,
       shipped: :shipped,
       cancelled: :cancelled,
@@ -192,7 +192,7 @@ module SpreeShipstation
     def process_shipstation_orders(shipstation_orders)
       shipment_ids = shipstation_orders.pluck(:shipment_id)
       shipstation_orders_mapping = ::Hash[ shipstation_orders.map {|so| [so.shipment_id, so] } ]
-      shipments = ::Spree::Shipment.includes([{order: {ship_address: [:state, :country], bill_address: [:state, :country]}, selected_shipping_rate: :shipping_method}, :inventory_units]).ready.where(id: shipment_ids).all
+      shipments = ::Spree::Shipment.includes([{order: {ship_address: [:state, :country], bill_address: [:state, :country]}, selected_shipping_rate: :shipping_method}, :inventory_units]).with_state(:ready, :pending).where(id: shipment_ids).all
       return if shipments.blank?
 
       line_item_ids = ::Spree::InventoryUnit.where(shipment_id: shipment_ids).map {|inventory_unit| inventory_unit.line_item_id }
@@ -203,12 +203,22 @@ module SpreeShipstation
       entries = {to_create: [], to_update: []}
       shipments.each do |shipment|
         order = shipment.order
+        unless order.completed?
+          # Rails.logger.warn("[IncompleteOrder] Order: #{order.number}, Shipment: #{shipment.number}")
+          next
+        end
+
         lis = shipment.inventory_units.map do |inventory_unit|
           li = line_items.fetch(inventory_unit.line_item_id, nil)
           next if li.blank? || li.try(:refund_items).present?
           li
         end.compact
         next if lis.blank?
+
+        unless STATE_MAP.has_key?(shipment.state.to_sym)
+          Rails.logger.warn("[InvalidShipmentState] Shipment: #{shipment.number}, State: #{shipment.state}")
+          next
+        end
 
         item = {
           shipment: shipment,
@@ -260,7 +270,17 @@ module SpreeShipstation
 
           shipments_h = ::Hash[ entries_buf.map {|entry| [entry[:shipment].number, entry[:shipment]] } ]
           res['results'].each do |resp|
-            next if resp.blank? || !resp.fetch('success', false)
+            next if resp.blank?
+
+            unless resp.fetch('success', false)
+              shipment_number = resp.fetch('orderNumber', nil)
+              if shipment_number.present?
+                error_payload = params.find {|param| param[:orderNumber] == shipment_number }
+                Rails.logger.warn("[CreateShipstationOrderFailed] #{error_payload}")
+              end
+
+              next
+            end
 
             shipment = shipments_h.fetch(resp['orderNumber'], nil)
             shipstation_order = shipment&.shipstation_order
