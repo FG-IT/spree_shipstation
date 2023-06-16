@@ -27,6 +27,14 @@ module SpreeShipstation
       end
     end
 
+    def create_shipment_orders_by_ids(shipment_ids)
+      return if @api_key.nil? || @api_secret.nil?
+
+      ::Spree::ShipstationOrder.where(order_key: nil, needed: true, shipstation_account_id: @shipstation_account.id, shipment_id: shipment_ids).find_in_batches(batch_size: 1000) do |shipstation_orders|
+        process_shipstation_orders(shipstation_orders)
+      end
+    end
+
     def create_shipment_orders
       return if @api_key.nil? || @api_secret.nil?
 
