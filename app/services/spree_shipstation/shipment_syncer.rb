@@ -26,12 +26,26 @@ module SpreeShipstation
         sleep 3
       end
     end
-
-    def create_shipment_orders_by_ids(shipment_ids)
+    
+    def update_shipment_orders_by_id(shipstation_order_id)
       return if @api_key.nil? || @api_secret.nil?
 
-      ::Spree::ShipstationOrder.where(order_key: nil, needed: true, shipstation_account_id: @shipstation_account.id, shipment_id: shipment_ids).find_in_batches(batch_size: 1000) do |shipstation_orders|
-        process_shipstation_orders(shipstation_orders)
+      shipstation_order = ::Spree::ShipstationOrder.where(id: shipstation_order_id)
+      process_shipstation_orders(shipstation_order) if shipstation_order.present?
+    end
+
+    def create_shipment_order_by_id(shipment_id)
+      return if @api_key.nil? || @api_secret.nil?
+
+      shipstation_order = ::Spree::ShipstationOrder.where(needed: true, shipstation_account_id: @shipstation_account.id, shipment_id: shipment_id)
+      process_shipstation_orders(shipstation_order)
+    end
+
+    def update_shipment_order_by_ids(shipment_ids)
+      return if @api_key.nil? || @api_secret.nil?
+
+      ::Spree::ShipstationOrder.includes(:shipment).where.not(order_key: nil).where(needed: true, shipstation_account_id: @shipstation_account.id).find_in_batches(batch_size: 1000) do |shipstation_orders|
+        process_shipstation_orders(shipstation_orders.select {|sso| sso.shipment.ready_or_pending? })
       end
     end
 
@@ -211,10 +225,10 @@ module SpreeShipstation
       entries = {to_create: [], to_update: []}
       shipments.each do |shipment|
         order = shipment.order
-        unless order.completed?
-          # Rails.logger.warn("[IncompleteOrder] Order: #{order.number}, Shipment: #{shipment.number}")
-          next
-        end
+        # unless order.completed?
+        #   # Rails.logger.warn("[IncompleteOrder] Order: #{order.number}, Shipment: #{shipment.number}")
+        #   next
+        # end
 
         lis = shipment.inventory_units.map do |inventory_unit|
           li = line_items.fetch(inventory_unit.line_item_id, nil)
@@ -231,8 +245,8 @@ module SpreeShipstation
         item = {
           shipment: shipment,
           shipstation_order_params: {
-            # orderId: shipment.id,
-            orderNumber: shipment.number,
+            orderKey: shipment.number,
+            orderNumber: shipment.id,
             orderDate: order.completed_at.strftime(DATE_FORMAT),
             customerEmail: order.email,
             orderTotal: order.total,
@@ -245,7 +259,8 @@ module SpreeShipstation
             amountPaid: shipment.order.payment_total,
             requestedShippingService: shipment.shipping_method.try(:name),
             advancedOptions: {
-              customField1: order.number
+              customField1: order.number,
+              customField2: shipment.tracking
             }
           }
         }
@@ -255,8 +270,8 @@ module SpreeShipstation
         end
 
         shipstation_order = shipstation_orders_mapping[shipment.id]
-        if shipstation_order.order_key.present?
-          item[:shipstation_order_params][:orderKey] = shipstation_order.order_key
+        if shipstation_order.order_id.present?
+          item[:shipstation_order_params][:orderId] = shipstation_order.order_id
           entries[:to_update] << item
         else
           entries[:to_create] << item
@@ -281,16 +296,16 @@ module SpreeShipstation
             next if resp.blank?
 
             unless resp.fetch('success', false)
-              shipment_number = resp.fetch('orderNumber', nil)
+              shipment_number = resp.fetch('orderKey', nil)
               if shipment_number.present?
-                error_payload = params.find {|param| param[:orderNumber] == shipment_number }
+                error_payload = params.find {|param| param[:orderKey] == shipment_number }
                 Rails.logger.warn("[CreateShipstationOrderFailed] #{error_payload}")
               end
 
               next
             end
 
-            shipment = shipments_h.fetch(resp['orderNumber'], nil)
+            shipment = shipments_h.fetch(resp['orderKey'], nil)
             shipstation_order = shipment&.shipstation_order
             next if shipment.blank? || shipstation_order.blank?
 
