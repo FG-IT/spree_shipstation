@@ -27,7 +27,7 @@ module SpreeShipstation
       end
     end
     
-    def update_shipment_orders_by_id(shipstation_order_id)
+    def update_shipment_order_by_id(shipstation_order_id)
       return if @api_key.nil? || @api_secret.nil?
 
       shipstation_order = ::Spree::ShipstationOrder.where(id: shipstation_order_id)
