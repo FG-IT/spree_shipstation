@@ -41,14 +41,6 @@ module SpreeShipstation
       process_shipstation_orders(shipstation_order)
     end
 
-    def update_shipment_order_by_ids(shipment_ids)
-      return if @api_key.nil? || @api_secret.nil?
-
-      ::Spree::ShipstationOrder.includes(:shipment).where.not(order_key: nil).where(needed: true, shipstation_account_id: @shipstation_account.id).find_in_batches(batch_size: 1000) do |shipstation_orders|
-        process_shipstation_orders(shipstation_orders.select {|sso| sso.shipment.ready_or_pending? })
-      end
-    end
-
     def create_shipment_orders
       return if @api_key.nil? || @api_secret.nil?
 
