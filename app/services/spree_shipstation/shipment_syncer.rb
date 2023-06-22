@@ -35,6 +35,22 @@ module SpreeShipstation
       end
     end
 
+    def update_shipment_orders_by_date(days)
+      return if @api_key.nil? || @api_secret.nil?
+
+      from_date_s = days.days.ago.strftime('%Y-%m-%d')
+      shipment_ids = ::Spree::Shipment.where('spree_shipments.created_at >= ?', from_date_s).pluck(:id)
+      update_shipment_orders_by_ids(shipment_ids)
+    end
+
+    def update_shipment_orders_by_ids(shipment_ids)
+      return if @api_key.nil? || @api_secret.nil?
+
+      ::Spree::ShipstationOrder.includes(:shipment).where.not(order_key: nil).where(needed: true, shipstation_account_id: @shipstation_account.id, shipment_id: shipment_ids).find_in_batches(batch_size: 1000) do |shipstation_orders|
+        process_shipstation_orders(shipstation_orders.select {|sso| sso.shipment.ready_or_pending? })
+      end
+    end
+
     def update_shipment_orders
       return if @api_key.nil? || @api_secret.nil?
 
@@ -220,6 +236,8 @@ module SpreeShipstation
           next
         end
 
+        first_tracking = order.order_sources&.first&.tracking
+
         item = {
           shipment: shipment,
           shipstation_order_params: {
@@ -237,7 +255,8 @@ module SpreeShipstation
             amountPaid: shipment.order.payment_total,
             requestedShippingService: shipment.shipping_method.try(:name),
             advancedOptions: {
-              customField1: order.number
+              customField1: order.number,
+              customField2: first_tracking
             }
           }
         }
