@@ -36,6 +36,17 @@ module Spree
 
         joins(:order).where(condition, from: from, to: to)
       end
+
+      def upload_other_shipments_to_ds_account(days = 15)
+        from_date_s = days.days.ago.strftime('%Y-%m-%d')
+        shipment_ids = ::Spree::Shipment.where('spree_shipments.created_at >= ?', from_date_s).pluck(:id)
+
+        shipstation_account = ::Spree::ShipstationAccount.active.where(name: 'EM DS').last
+
+        ::Spree::ShipstationOrder.where(shipment_id: shipment_ids, needed: false, shipstation_account_id: nil).find_in_batches(batch_size: 1000).each do |batch|
+          batch.update_all(needed: true, shipstation_account_id: shipstation_account.id)
+        end
+      end
     end
 
     ::Spree::Shipment.prepend self
