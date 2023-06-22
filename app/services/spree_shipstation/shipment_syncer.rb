@@ -238,6 +238,8 @@ module SpreeShipstation
 
         first_tracking = order.order_sources&.first&.tracking
 
+        next if first_tracking.blank?
+
         item = {
           shipment: shipment,
           shipstation_order_params: {
