@@ -47,14 +47,6 @@ module SpreeShipstation
       end
     end
 
-    def update_shipment_orders_by_date(days)
-      return if @api_key.nil? || @api_secret.nil?
-
-      from_date_s = days.days.ago.strftime('%Y-%m-%d')
-      shipment_ids = ::Spree::Shipment.where('spree_shipments.created_at >= ?', from_date_s).pluck(:id)
-      update_shipment_orders_by_ids(shipment_ids)
-    end
-
     def update_shipment_order_by_id(shipment_id)
       return if @api_key.nil? || @api_secret.nil?
 

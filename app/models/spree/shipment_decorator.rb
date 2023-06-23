@@ -36,7 +36,6 @@ module Spree
 
         joins(:order).where(condition, from: from, to: to)
       end
-
     end
 
     ::Spree::Shipment.prepend self
