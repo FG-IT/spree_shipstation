@@ -36,7 +36,7 @@ module SpreeShipstation
 
     def sync_shipstation_order(shipstation_order)
       return if @api_key.nil? || @api_secret.nil?
-      process_shipstation_orders([shipstation_order])
+      process_shipstation_orders([shipstation_order], true)
     end
 
     def create_shipment_orders
@@ -214,10 +214,19 @@ module SpreeShipstation
       end
     end
 
-    def process_shipstation_orders(shipstation_orders)
+    def get_shipments_by_state(shipment_ids, is_update=false)
+      if is_update
+        ::Spree::Shipment.includes([{order: {ship_address: [:state, :country], bill_address: [:state, :country], order_sources: []}, selected_shipping_rate: :shipping_method}, :inventory_units]).with_state(:ready, :pending, :shipped).where(id: shipment_ids).all
+      else
+        ::Spree::Shipment.includes([{order: {ship_address: [:state, :country], bill_address: [:state, :country], order_sources: []}, selected_shipping_rate: :shipping_method}, :inventory_units]).with_state(:ready, :pending).where(id: shipment_ids).all
+      end
+    end
+
+
+    def process_shipstation_orders(shipstation_orders, is_update=true)
       shipment_ids = shipstation_orders.pluck(:shipment_id)
       shipstation_orders_mapping = ::Hash[ shipstation_orders.map {|so| [so.shipment_id, so] } ]
-      shipments = ::Spree::Shipment.includes([{order: {ship_address: [:state, :country], bill_address: [:state, :country], order_sources: []}, selected_shipping_rate: :shipping_method}, :inventory_units]).with_state(:ready, :pending).where(id: shipment_ids).all
+      shipments = get_shipments_by_state(shipment_ids, is_update)
       return if shipments.blank?
 
       line_item_ids = ::Spree::InventoryUnit.where(shipment_id: shipment_ids).map {|inventory_unit| inventory_unit.line_item_id }
@@ -245,6 +254,7 @@ module SpreeShipstation
           next
         end
 
+        first_tracking = order.order_sources&.first&.tracking
         first_tracking = order.order_sources&.first&.tracking
         shipstation_order = shipstation_orders_mapping[shipment.id]
 
