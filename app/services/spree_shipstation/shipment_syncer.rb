@@ -222,6 +222,9 @@ module SpreeShipstation
       end
     end
 
+    def find_tracking(order)
+      order.order_sources&.find { |source| source.tracking.present? }&.tracking
+    end
 
     def process_shipstation_orders(shipstation_orders, is_update=true)
       shipment_ids = shipstation_orders.pluck(:shipment_id)
@@ -254,8 +257,6 @@ module SpreeShipstation
           next
         end
 
-        first_tracking = order.order_sources&.first&.tracking
-        first_tracking = order.order_sources&.first&.tracking
         shipstation_order = shipstation_orders_mapping[shipment.id]
 
         item = {
@@ -276,7 +277,7 @@ module SpreeShipstation
             requestedShippingService: shipment.shipping_method.try(:name),
             advancedOptions: {
               customField1: order.number,
-              customField2: first_tracking
+              customField2: find_tracking(order)
             }
           }
         }
@@ -354,6 +355,8 @@ module SpreeShipstation
     end
 
     def convert_address(address)
+      return if address.blank?
+
       {
         name: "#{address.firstname} #{address.lastname}",
         company: address.company,
