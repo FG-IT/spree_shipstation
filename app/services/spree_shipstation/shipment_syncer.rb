@@ -27,12 +27,31 @@ module SpreeShipstation
       end
     end
 
+    def sync_shipstation_order_by_shipment_ids(shipment_ids)
+      return if @api_key.nil? || @api_secret.nil?
+
+      shipstation_orders = ::Spree::ShipstationOrder.where(shipment_id: shipment_ids)
+      process_shipstation_orders(shipstation_orders)
+    end
+
+    def sync_shipstation_order(shipstation_order)
+      return if @api_key.nil? || @api_secret.nil?
+      process_shipstation_orders([shipstation_order], true)
+    end
+
     def create_shipment_orders
       return if @api_key.nil? || @api_secret.nil?
 
       ::Spree::ShipstationOrder.where(order_key: nil, needed: true, shipstation_account_id: @shipstation_account.id).find_in_batches(batch_size: 1000) do |shipstation_orders|
         process_shipstation_orders(shipstation_orders)
       end
+    end
+
+    def update_shipment_order_by_id(shipment_id)
+      return if @api_key.nil? || @api_secret.nil?
+
+      shipstation_order = ::Spree::ShipstationOrder.includes(:shipment).where(needed: true, shipstation_account_id: @shipstation_account.id, shipment_id: shipment_id)
+      process_shipstation_orders(shipstation_order)
     end
 
     def update_shipment_orders
@@ -137,6 +156,12 @@ module SpreeShipstation
       end
     end
 
+    def clean_shipment_order_by_id(order_id)
+      r = delete_shipstation_order(order_id)
+      Rails.logger.info("[ShipstationOrderDeletion] Response: #{r}, OrderID: #{order_id}")
+      wait
+    end
+
     def clean_shipment_orders(params={})
       dft_params = {
         page: 1,
@@ -189,10 +214,22 @@ module SpreeShipstation
       end
     end
 
-    def process_shipstation_orders(shipstation_orders)
+    def get_shipments_by_state(shipment_ids, is_update=false)
+      if is_update
+        ::Spree::Shipment.includes([{order: {ship_address: [:state, :country], bill_address: [:state, :country], order_sources: []}, selected_shipping_rate: :shipping_method}, :inventory_units]).with_state(:ready, :pending, :shipped).where(id: shipment_ids).all
+      else
+        ::Spree::Shipment.includes([{order: {ship_address: [:state, :country], bill_address: [:state, :country], order_sources: []}, selected_shipping_rate: :shipping_method}, :inventory_units]).with_state(:ready, :pending).where(id: shipment_ids).all
+      end
+    end
+
+    def find_tracking(order)
+      order.order_sources&.find { |source| source.tracking.present? }&.tracking
+    end
+
+    def process_shipstation_orders(shipstation_orders, is_update=true)
       shipment_ids = shipstation_orders.pluck(:shipment_id)
       shipstation_orders_mapping = ::Hash[ shipstation_orders.map {|so| [so.shipment_id, so] } ]
-      shipments = ::Spree::Shipment.includes([{order: {ship_address: [:state, :country], bill_address: [:state, :country]}, selected_shipping_rate: :shipping_method}, :inventory_units]).with_state(:ready, :pending).where(id: shipment_ids).all
+      shipments = get_shipments_by_state(shipment_ids, is_update)
       return if shipments.blank?
 
       line_item_ids = ::Spree::InventoryUnit.where(shipment_id: shipment_ids).map {|inventory_unit| inventory_unit.line_item_id }
@@ -220,11 +257,13 @@ module SpreeShipstation
           next
         end
 
+        shipstation_order = shipstation_orders_mapping[shipment.id]
+
         item = {
           shipment: shipment,
           shipstation_order_params: {
-            # orderId: shipment.id,
             orderNumber: shipment.number,
+            orderKey: shipstation_order.order_key,
             orderDate: order.completed_at.strftime(DATE_FORMAT),
             customerEmail: order.email,
             orderTotal: order.total,
@@ -237,7 +276,8 @@ module SpreeShipstation
             amountPaid: shipment.order.payment_total,
             requestedShippingService: shipment.shipping_method.try(:name),
             advancedOptions: {
-              customField1: order.number
+              customField1: order.number,
+              customField2: find_tracking(order)
             }
           }
         }
@@ -246,9 +286,7 @@ module SpreeShipstation
           item[:shipstation_order_params][:advancedOptions][:storeId] = @shipstation_account.shipstation_store_id
         end
 
-        shipstation_order = shipstation_orders_mapping[shipment.id]
-        if shipstation_order.order_key.present?
-          item[:shipstation_order_params][:orderKey] = shipstation_order.order_key
+        if shipstation_order.order_id.present?
           entries[:to_update] << item
         else
           entries[:to_create] << item
@@ -317,6 +355,8 @@ module SpreeShipstation
     end
 
     def convert_address(address)
+      return if address.blank?
+
       {
         name: "#{address.firstname} #{address.lastname}",
         company: address.company,
