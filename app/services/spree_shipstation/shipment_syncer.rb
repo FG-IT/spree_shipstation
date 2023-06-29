@@ -5,7 +5,7 @@ module SpreeShipstation
       pending: :awaiting_payment,
       ready: :awaiting_shipment,
       shipped: :shipped,
-      cancelled: :cancelled,
+      canceled: :cancelled
     }
 
     DATE_FORMAT = '%Y-%m-%d'
@@ -42,7 +42,7 @@ module SpreeShipstation
     def create_shipment_orders
       return if @api_key.nil? || @api_secret.nil?
 
-      ::Spree::ShipstationOrder.where(order_key: nil, needed: true, shipstation_account_id: @shipstation_account.id).find_in_batches(batch_size: 1000) do |shipstation_orders|
+      ::Spree::ShipstationOrder.where(order_id: nil, needed: true, shipstation_account_id: @shipstation_account.id).find_in_batches(batch_size: 1000) do |shipstation_orders|
         process_shipstation_orders(shipstation_orders)
       end
     end
@@ -223,8 +223,12 @@ module SpreeShipstation
     end
 
     def find_tracking(order)
-      trackings = order.order_sources&.map { |order_source| order_source.tracking }
-      trackings.compact.uniq.join(',')
+      trackings = order&.order_sources&.map { |order_source| order_source.tracking }
+      if trackings.present?
+        trackings.compact.uniq.join(',')
+      else
+        ''
+      end
     end
 
     def process_shipstation_orders(shipstation_orders, is_update=true)
