@@ -223,7 +223,8 @@ module SpreeShipstation
     end
 
     def find_tracking(order)
-      order.order_sources&.find { |source| source.tracking.present? }&.tracking
+      trackings = order.order_sources&.map { |order_source| order_source.tracking }
+      trackings.compact.uniq.join(',')
     end
 
     def process_shipstation_orders(shipstation_orders, is_update=true)
