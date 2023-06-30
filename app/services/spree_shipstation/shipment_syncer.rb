@@ -216,7 +216,7 @@ module SpreeShipstation
 
     def get_shipments_by_state(shipment_ids, is_update=false)
       if is_update
-        ::Spree::Shipment.includes([{order: {ship_address: [:state, :country], bill_address: [:state, :country], order_sources: []}, selected_shipping_rate: :shipping_method}, :inventory_units]).with_state(:ready, :pending, :shipped).where(id: shipment_ids).all
+        ::Spree::Shipment.includes([{order: {ship_address: [:state, :country], bill_address: [:state, :country], order_sources: []}, selected_shipping_rate: :shipping_method}, :inventory_units]).with_state(:ready, :pending, :shipped, :canceled).where(id: shipment_ids).all
       else
         ::Spree::Shipment.includes([{order: {ship_address: [:state, :country], bill_address: [:state, :country], order_sources: []}, selected_shipping_rate: :shipping_method}, :inventory_units]).with_state(:ready, :pending).where(id: shipment_ids).all
       end
