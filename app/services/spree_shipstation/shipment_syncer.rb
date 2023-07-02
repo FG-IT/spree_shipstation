@@ -262,6 +262,12 @@ module SpreeShipstation
           next
         end
 
+        if shipment.state == 'pending' && order.approved? && order.state != 'canceled'
+          order_status = :awaiting_shipment
+        else
+          order_status = STATE_MAP[shipment.state.to_sym]
+        end
+
         shipstation_order = shipstation_orders_mapping[shipment.id]
 
         item = {
