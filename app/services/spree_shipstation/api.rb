@@ -51,14 +51,21 @@ module SpreeShipstation
       request['Content-Type'] = 'application/json'
       request.body = json_payload
 
-      response = https.request(request)
-      set_rate_limit_info(response.header)
+      resp = nil
+      while true do
+        response = https.request(request)
+        set_rate_limit_info(response.header)
 
-      if response.code.to_i >= 200 && response.code.to_i < 300
-        JSON.parse(response.read_body)
-      else
-        false
+        if response.code.to_i >= 200 && response.code.to_i < 300
+          resp = JSON.parse(response.read_body)
+          break
+        else
+          Rails.logger.debug("[ShipstationApiError] Code: #{response.code}, Body: #{response.read_body}")
+          sleep response.headers['X-Rate-Limit-Reset'].to_i + 1
+        end
       end
+
+      resp
     end
 
     def make_request(method, path, params)
@@ -79,14 +86,22 @@ module SpreeShipstation
         request.body = json_payload
       end
 
-      response = https.request(request)
-      set_rate_limit_info(response.header)
+      resp = nil
+      while true do
+        response = https.request(request)
+        set_rate_limit_info(response.header)
 
-      if response.code.to_i >= 200 && response.code.to_i < 300
-        JSON.parse(response.read_body)
-      else
-        response
+        if response.code.to_i >= 200 && response.code.to_i < 300
+          resp = JSON.parse(response.read_body)
+          break
+        else
+          if response.code.to_i == 429
+            sleep response.headers['X-Rate-Limit-Reset'].to_i + 1
+          end
+        end
       end
+
+      resp
     end
 
     private 

@@ -20,11 +20,11 @@ module SpreeShipstation
     end
 
     def wait
-      if @api_client.x_rate_limit_remaining.try(:<, 5)
-        sleep @api_client.x_rate_limit_reset + 1
-      else
-        sleep 3
-      end
+      # if @api_client.x_rate_limit_remaining.try(:<, 5)
+      #   sleep @api_client.x_rate_limit_reset + 1
+      # else
+      #   sleep 3
+      # end
     end
 
     def sync_shipstation_order_by_shipment_ids(shipment_ids)
@@ -318,6 +318,9 @@ module SpreeShipstation
             res = create_shipstation_orders(params)
           else
             res = update_shipstation_orders(params)
+          end
+          unless res
+            Rails.logger.debug("[ShipstationPayload] #{params}")
           end
           Rails.logger.debug("[ShipstationResponse] #{res}")
 
