@@ -231,6 +231,11 @@ module SpreeShipstation
       end
     end
 
+    def order_code(order)
+      order_codes = order&.order_sources&.map {|os| os.external_order_code }&.compact
+      order_codes.present? ? order_codes.uniq.join(',') : ''
+    end
+
     def process_shipstation_orders(shipstation_orders, is_update=true)
       shipment_ids = shipstation_orders.pluck(:shipment_id)
       shipstation_orders_mapping = ::Hash[ shipstation_orders.map {|so| [so.shipment_id, so] } ]
@@ -288,7 +293,8 @@ module SpreeShipstation
             requestedShippingService: shipment.shipping_method.try(:name),
             advancedOptions: {
               customField1: order.number,
-              customField2: find_tracking(order)
+              customField2: find_tracking(order),
+              customField3: order_code(order)
             }
           }
         }
