@@ -62,13 +62,13 @@ module SpreeShipstation
       end
     end
 
-    def sync_shipments(params={})
+    def sync_shipments(days=7, params={})
       return unless @api_key.present? && @api_secret.present?
 
       dft_params = {
         page: 1,
         pageSize: PAGE_SIZE,
-        shipDateStart: 7.days.ago.strftime('%Y-%m-%d'),
+        shipDateStart: days.days.ago.strftime('%Y-%m-%d'),
         sortBy: 'ShipDate',
       }
 
@@ -85,13 +85,18 @@ module SpreeShipstation
         shipments_mapping = ::Hash[ ::Spree::Shipment.where(number: shipment_numbers).map {|shipment| [shipment.number, shipment] } ]
         res['shipments'].each do |ss|
           shipment = shipments_mapping.fetch(ss['orderNumber'], nil)
-          next if shipment.blank? || (shipment.tracking.present? && shipment.carrier.present? && shipment.actual_cost.present?)
+          if shipment.blank? || (shipment.tracking.present? && shipment.carrier.present? && shipment.actual_cost > 0)
+            Rails.logger.info("[ShipmentCostAlreadyExist] #{shipment&.number}")
+            next
+          end
+          Rails.logger.info("[ShipmentSync] Shipstation: #{ss}, Website: #{shipment.to_json}")
 
           attrs = { actual_cost: ss['shipmentCost'] }
           attrs[:carrier] = get_carrier(ss['carrierCode'], ss['serviceCode']) if shipment.carrier.blank?
           attrs[:tracking] = ss['trackingNumber'] if shipment.tracking.blank?
           begin
             shipment&.update_attributes_and_order(attrs)
+            Rails.logger.info("[ShipmentSynced] Shipment: #{shipment.number}, Info: #{attrs}")
           rescue
             Rails.logger.warn("[ShipmentUpdateTrackingFailed] Number: #{ss['orderNumber']}, Attrs: #{attrs}")
           end
@@ -270,7 +275,16 @@ module SpreeShipstation
         if shipment.state == 'pending' && order.approved? && order.state != 'canceled'
           order_status = :awaiting_shipment
         else
-          order_status = STATE_MAP[shipment.state.to_sym]
+          if lis.any? {|li| li.variant.sku.downcase.start_with?('em') }
+            shipment_state = shipment.state.to_sym
+            if shipment_state == :pending
+              order_status = STATE_MAP[:ready]
+            else
+              order_status = STATE_MAP[shipment_state]
+            end
+          else
+            order_status = STATE_MAP[shipment.state.to_sym]
+          end
         end
 
         shipstation_order = shipstation_orders_mapping[shipment.id]
@@ -288,7 +302,7 @@ module SpreeShipstation
             items: get_shipment_items(lis),
             shipTo: convert_address(order.ship_address),
             billTo: convert_address(order.bill_address),
-            orderStatus: STATE_MAP[shipment.state.to_sym],
+            orderStatus: order_status,
             amountPaid: shipment.order.payment_total,
             requestedShippingService: shipment.shipping_method.try(:name),
             advancedOptions: {

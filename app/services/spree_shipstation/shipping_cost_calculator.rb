@@ -10,14 +10,10 @@ module SpreeShipstation
       end
 
       def calculate(from_date, to_date = Date.today)
-        orders = Spree::Order.select(:id, :completed_at).includes(:shipments).completed_between(from_date.to_date.beginning_of_day, to_date.to_date.end_of_day)
-        orders.group_by do |order|
-          order.completed_at.to_date
-        end.map do |date, orders|
-          costs = orders.map do |order|
-            order.shipments.sum(&:actual_cost)
-          end.sum
-          [date, costs]
+        ::Spree::Shipment.where(shipped_at: ((from_date.to_date.beginning_of_day)..(to_date.to_date.end_of_day))).group_by do |shipment|
+          shipment.shipped_at.to_date.to_s
+        end.map do |date, shipments|
+          [date, shipments.sum(&:actual_cost)]
         end.to_h
       end
     end

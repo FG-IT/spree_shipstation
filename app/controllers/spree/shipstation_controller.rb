@@ -7,10 +7,10 @@ module Spree
     before_action :authenticate_shipstation
 
     def shipnotify
-      SpreeShipstation::ShipmentNotice.from_payload(params.to_unsafe_h, request.raw_post).apply
+    #   SpreeShipstation::ShipmentNotice.from_payload(params.to_unsafe_h, request.raw_post).apply
       head :ok
-    rescue SpreeShipstation::Error
-      head :bad_request
+    # rescue SpreeShipstation::Error
+    #   head :bad_request
     end
 
     private
