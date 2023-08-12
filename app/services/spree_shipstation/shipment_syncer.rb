@@ -31,7 +31,7 @@ module SpreeShipstation
       return if @api_key.nil? || @api_secret.nil?
 
       shipstation_orders = ::Spree::ShipstationOrder.where(shipment_id: shipment_ids)
-      process_shipstation_orders(shipstation_orders)
+      process_shipstation_orders(shipstation_orders, true)
     end
 
     def sync_shipstation_order(shipstation_order)
@@ -51,14 +51,14 @@ module SpreeShipstation
       return if @api_key.nil? || @api_secret.nil?
 
       shipstation_order = ::Spree::ShipstationOrder.includes(:shipment).where(needed: true, shipstation_account_id: @shipstation_account.id, shipment_id: shipment_id)
-      process_shipstation_orders(shipstation_order)
+      process_shipstation_orders(shipstation_order, true)
     end
 
     def update_shipment_orders
       return if @api_key.nil? || @api_secret.nil?
 
       ::Spree::ShipstationOrder.includes(:shipment).where.not(order_key: nil).where(needed: true, shipstation_account_id: @shipstation_account.id).find_in_batches(batch_size: 1000) do |shipstation_orders|
-        process_shipstation_orders(shipstation_orders.select {|sso| sso.shipment.ready_or_pending? })
+        process_shipstation_orders(shipstation_orders.select {|sso| sso.shipment.ready_or_pending? }, true)
       end
     end
 
