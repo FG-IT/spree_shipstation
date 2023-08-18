@@ -61,7 +61,11 @@ module SpreeShipstation
           break
         else
           Rails.logger.debug("[ShipstationApiError] Code: #{response.code}, Body: #{response.read_body}")
-          sleep response.header['X-Rate-Limit-Reset'].to_i + 1
+          if response.code.to_i == 429
+            sleep response.header['X-Rate-Limit-Reset'].to_i + 1
+          else
+            break
+          end
         end
       end
 
@@ -94,10 +98,10 @@ module SpreeShipstation
         if response.code.to_i >= 200 && response.code.to_i < 300
           resp = JSON.parse(response.read_body)
           break
+        elsif response.code.to_i == 429
+          sleep response.header['X-Rate-Limit-Reset'].to_i + 1
         else
-          if response.code.to_i == 429
-            sleep response.header['X-Rate-Limit-Reset'].to_i + 1
-          end
+          break
         end
       end
 
