@@ -54,6 +54,14 @@ module SpreeShipstation
       process_shipstation_orders(shipstation_order, true)
     end
 
+    def update_shipstation_orders_by_state
+      return if @api_key.nil? || @api_secret.nil?
+
+      ::Spree::ShipstationOrder.includes(:shipment).where.not(order_key: nil).where(needed: true, is_updated: true, shipstation_account_id: @shipstation_account.id).find_in_batches(batch_size: 1000) do |shipstation_orders|
+        process_shipstation_orders(shipstation_orders, true)
+      end
+    end
+
     def update_shipment_orders
       return if @api_key.nil? || @api_secret.nil?
 
@@ -238,6 +246,7 @@ module SpreeShipstation
     end
 
     def process_shipstation_orders(shipstation_orders, is_update=true)
+      # TODO DO not need is_update check anymore
       shipment_ids = shipstation_orders.pluck(:shipment_id)
       shipstation_orders_mapping = ::Hash[ shipstation_orders.map {|so| [so.shipment_id, so] } ]
       shipments = get_shipments_by_state(shipment_ids, is_update)
@@ -354,9 +363,13 @@ module SpreeShipstation
             shipstation_order = shipment&.shipstation_order
             next if shipment.blank? || shipstation_order.blank?
 
+            update_parms = {
+              is_updated: false
+            }
             if shipstation_order.order_id != resp['orderId'] || shipstation_order.order_key != resp['orderKey']
-              shipstation_order.update(order_id: resp['orderId'], order_key: resp['orderKey'])
+              update_parms.merge!({order_id: resp['orderId'], order_key: resp['orderKey']})
             end
+            shipstation_order.update(update_parms)
           end
 
           wait
