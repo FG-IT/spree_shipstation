@@ -1,6 +1,6 @@
 module SpreeShipstation
   class SyncShipmentsCostJob < ApplicationJob
-    queue_as :default
+    queue_as :shipstation
 
     def perform(shipstation_id)
       shipstation_account = Spree::ShipstationAccount.find(shipstation_id)

@@ -1,6 +1,6 @@
 module SpreeShipstation
   class UpdateDailyStatisticsJob < ApplicationJob
-    queue_as :default
+    queue_as :shipstation
 
     def perform
       possibility = rand()
@@ -11,7 +11,7 @@ module SpreeShipstation
       else
         from_date = 7.days.ago
       end
-      SpreeShipstation::ShippingCostCalculator.update_daily_statistics(from_date)
+      ::SpreeShipstation::ShippingCostCalculator.update_daily_statistics(from_date)
     end
 
   end

@@ -1,6 +1,6 @@
 module SpreeShipstation
   class SyncAllShipmentsCostJob < ApplicationJob
-    queue_as :default
+    queue_as :shipstation
 
     def perform
       Spree::ShipstationAccount.active.pluck(:id).each do |shipstation_id|

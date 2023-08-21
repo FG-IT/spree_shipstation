@@ -19,49 +19,6 @@ module SpreeShipstation
       @page = 1
     end
 
-    def wait
-      # if @api_client.x_rate_limit_remaining.try(:<, 5)
-      #   sleep @api_client.x_rate_limit_reset + 1
-      # else
-      #   sleep 3
-      # end
-    end
-
-    def sync_shipstation_order_by_shipment_ids(shipment_ids)
-      return if @api_key.nil? || @api_secret.nil?
-
-      shipstation_orders = ::Spree::ShipstationOrder.where(shipment_id: shipment_ids)
-      process_shipstation_orders(shipstation_orders, true)
-    end
-
-    def sync_shipstation_order(shipstation_order)
-      return if @api_key.nil? || @api_secret.nil?
-      process_shipstation_orders([shipstation_order], true)
-    end
-
-    def create_shipment_orders
-      return if @api_key.nil? || @api_secret.nil?
-
-      ::Spree::ShipstationOrder.where(order_id: nil, needed: true, shipstation_account_id: @shipstation_account.id).find_in_batches(batch_size: 1000) do |shipstation_orders|
-        process_shipstation_orders(shipstation_orders)
-      end
-    end
-
-    def update_shipment_order_by_id(shipment_id)
-      return if @api_key.nil? || @api_secret.nil?
-
-      shipstation_order = ::Spree::ShipstationOrder.includes(:shipment).where(needed: true, shipstation_account_id: @shipstation_account.id, shipment_id: shipment_id)
-      process_shipstation_orders(shipstation_order, true)
-    end
-
-    def update_shipment_orders
-      return if @api_key.nil? || @api_secret.nil?
-
-      ::Spree::ShipstationOrder.includes(:shipment).where.not(order_key: nil).where(needed: true, shipstation_account_id: @shipstation_account.id).find_in_batches(batch_size: 1000) do |shipstation_orders|
-        process_shipstation_orders(shipstation_orders.select {|sso| sso.shipment.ready_or_pending? }, true)
-      end
-    end
-
     def sync_shipments(days=7, params={})
       return unless @api_key.present? && @api_secret.present?
 
@@ -78,7 +35,6 @@ module SpreeShipstation
 
       while true do
         res = @api_client.list_shipments(filter)
-        wait
         break if res.blank? || res['shipments'].blank?
 
         shipment_numbers = res['shipments'].map {|ss| ss['orderNumber'] }
@@ -123,7 +79,6 @@ module SpreeShipstation
 
       while true do
         res = list_shipstation_orders(filter)
-        wait
         break if res.blank? || res['orders'].blank?
 
         res_orders = ::Hash[ res['orders'].map {|r| [r['orderNumber'], r] } ]
@@ -161,209 +116,42 @@ module SpreeShipstation
       end
     end
 
-    def clean_shipment_order_by_id(order_id)
-      r = delete_shipstation_order(order_id)
-      Rails.logger.info("[ShipstationOrderDeletion] Response: #{r}, OrderID: #{order_id}")
-      wait
-    end
-
-    def clean_shipment_orders(params={})
-      dft_params = {
-        page: 1,
-        pageSize: PAGE_SIZE,
-        createDateStart: 7.days.ago.strftime('%Y-%m-%d'),
-        sortBy: 'CreateDate',
-      }
-
-      filter = {}
-      filter.merge!(dft_params, params)
-      filter[:storeId] = @shipstation_account.shipstation_store_id if @shipstation_account.shipstation_store_id.present?
-
-      ssas = ::Hash[ ::Spree::ShipstationAccount.active.map {|ssa|[ssa.id, ssa] } ]
-
-      while true do
-        res = list_shipstation_orders(filter)
-        wait
-        break if res.blank? || res['orders'].blank?
-
-        res_orders = ::Hash[ res['orders'].map {|r| [r['orderNumber'], r] } ]
-        shipment_numbers = res['orders'].map {|r| r['orderNumber'] }
-        shipments = ::Spree::Shipment.where(number: shipment_numbers)
-        shipments_mapping = ::Hash[ shipments.map {|shipment| [shipment.id, {shipment: shipment, shipstation: res_orders.fetch(shipment['number'], nil)}] } ]
-        
-        ::Spree::ShipstationOrder.where(shipment_id: shipments_mapping.keys).each do |shipstation_order|
-          sm = shipments_mapping.delete(shipstation_order.shipment_id)
-          next if sm[:shipstation].blank?
-
-          if shipstation_order.needed?
-            # store_id = sm[:shipstation].fetch('advancedOptions', nil)&.fetch('storeId', nil)
-            # ssa = ssas.fetch(shipstation_order.shipstation_account_id, nil)
-            # if ssa.present?
-            #   if store_id != ssa.shipstation_store_id
-            #     # TODO: Update shipstation order
-            #   else
-            #     shipstation_order.update(order_id: sm[:shipstation]['orderId'], order_key: sm[:shipstation]['orderKey'])
-            #   end
-            # end
-          else
-            r = delete_shipstation_order(sm[:shipstation]['orderId'])
-            Rails.logger.info("[ShipstationOrderDeletion] Response: #{r}, OrderID: #{sm[:shipstation]['orderId']}, OrderNumber: #{sm[:shipstation][:orderNumber]}")
-            wait
-          end
-        end
-
-        pages = res.fetch('pages', 1)
-        break if filter[:page] >= pages
-
-        filter[:page] += 1
-      end
-    end
-
-    def get_shipments_by_state(shipment_ids, is_update=false)
-      if is_update
-        ::Spree::Shipment.includes([{order: {ship_address: [:state, :country], bill_address: [:state, :country], order_sources: []}, selected_shipping_rate: :shipping_method}, :inventory_units]).with_state(:ready, :pending, :shipped, :canceled).where(id: shipment_ids).all
-      else
-        ::Spree::Shipment.includes([{order: {ship_address: [:state, :country], bill_address: [:state, :country], order_sources: []}, selected_shipping_rate: :shipping_method}, :inventory_units]).with_state(:ready, :pending).where(id: shipment_ids).all
-      end
-    end
-
-    def find_tracking(order)
-      trackings = order&.order_sources&.map { |order_source| order_source.tracking }
-      if trackings.present?
-        trackings.compact.uniq.join(',')
-      else
-        ''
-      end
-    end
-
-    def order_code(order)
-      order_codes = order&.order_sources&.map {|os| os.external_order_code }&.compact
-      order_codes.present? ? order_codes.uniq.join(',') : ''
-    end
-
-    def process_shipstation_orders(shipstation_orders, is_update=true)
-      shipment_ids = shipstation_orders.pluck(:shipment_id)
-      shipstation_orders_mapping = ::Hash[ shipstation_orders.map {|so| [so.shipment_id, so] } ]
-      shipments = get_shipments_by_state(shipment_ids, is_update)
-      return if shipments.blank?
-
-      line_item_ids = ::Spree::InventoryUnit.where(shipment_id: shipment_ids).map {|inventory_unit| inventory_unit.line_item_id }
-      line_items = ::Hash[ ::Spree::LineItem.includes([{variant: [{option_values: :option_type}, :product, :images]}, :refund_items]).where(id: line_item_ids).map do |line_item|
-        [line_item.id, line_item] 
-      end ]
-
-      entries = {to_create: [], to_update: []}
-      shipments.each do |shipment|
-        order = shipment.order
-        unless order.completed?
-          # Rails.logger.warn("[IncompleteOrder] Order: #{order.number}, Shipment: #{shipment.number}")
-          next
-        end
-
-        lis = shipment.inventory_units.map do |inventory_unit|
-          li = line_items.fetch(inventory_unit.line_item_id, nil)
-          next if li.blank? || li.try(:refund_items).present?
-          li
-        end.compact
-        next if lis.blank?
-
-        unless STATE_MAP.has_key?(shipment.state.to_sym)
-          Rails.logger.warn("[InvalidShipmentState] Shipment: #{shipment.number}, State: #{shipment.state}")
-          next
-        end
-
-        if shipment.state == 'pending' && order.approved? && order.state != 'canceled'
-          order_status = :awaiting_shipment
+    def process_shipstation_orders(shipstation_orders)
+      sos = []
+      shipstation_orders.each do |so|
+        if so.data.present?
+          data = JSON.parse(so.data, {symbolize_names: true})
+          sos << data
         else
-          if lis.any? {|li| li.variant.sku.downcase.start_with?('em') }
-            shipment_state = shipment.state.to_sym
-            if shipment_state == :pending
-              order_status = STATE_MAP[:ready]
-            else
-              order_status = STATE_MAP[shipment_state]
-            end
-          else
-            order_status = STATE_MAP[shipment.state.to_sym]
-          end
-        end
+          data = so.shipstation_order_data
+          so.data = JSON.generate(data)
+          so.is_update = false
+          so.save
 
-        shipstation_order = shipstation_orders_mapping[shipment.id]
-
-        item = {
-          shipment: shipment,
-          shipstation_order_params: {
-            orderNumber: shipment.number,
-            orderKey: shipstation_order.order_key,
-            orderDate: order.completed_at.strftime(DATE_FORMAT),
-            customerEmail: order.email,
-            orderTotal: order.total,
-            taxAmount: order.tax_total,
-            shippingAmount: order.ship_total,
-            items: get_shipment_items(lis),
-            shipTo: convert_address(order.ship_address),
-            billTo: convert_address(order.bill_address),
-            orderStatus: order_status,
-            amountPaid: shipment.order.payment_total,
-            requestedShippingService: shipment.shipping_method.try(:name),
-            advancedOptions: {
-              customField1: order.number,
-              customField2: find_tracking(order),
-              customField3: order_code(order)
-            }
-          }
-        }
-
-        if @shipstation_account.shipstation_store_id.present?
-          item[:shipstation_order_params][:advancedOptions][:storeId] = @shipstation_account.shipstation_store_id
-        end
-
-        if shipstation_order.order_id.present?
-          entries[:to_update] << item
-        else
-          entries[:to_create] << item
+          sos << data
         end
       end
 
-      entries.each do |k, v|
-        v.each_slice(10) do |entries_buf|
-          params = entries_buf.map {|entry| entry[:shipstation_order_params] }
+      res = create_shipstation_orders(sos)
+      unless res
+        Rails.logger.debug("[ShipstationPayload] #{params}")
+      end
+      Rails.logger.debug("[ShipstationResponse] #{res}")
 
-          if k == :to_create
-            res = create_shipstation_orders(params)
-          else
-            res = update_shipstation_orders(params)
-          end
-          unless res
-            Rails.logger.debug("[ShipstationPayload] #{params}")
-          end
-          Rails.logger.debug("[ShipstationResponse] #{res}")
+      return unless res.present? && res['results'].present?
 
-          next unless res.present? && res['results'].present?
+      shipments = ::Hash[ ::Spree::Shipment.where(id: shipstation_orders.map {|so| so.shipment_id }.uniq).map {|shipment| [shipment.id, shipment] } ]
+      shipstation_orders_h = ::Hash[ shipstation_orders.map {|so| [shipments[so.shipment_id].try(:number), so] } ]
+      res['results'].each do |resp|
+        next if resp.blank?
 
-          shipments_h = ::Hash[ entries_buf.map {|entry| [entry[:shipment].number, entry[:shipment]] } ]
-          res['results'].each do |resp|
-            next if resp.blank?
+        next unless resp.fetch('success', false)
 
-            unless resp.fetch('success', false)
-              shipment_number = resp.fetch('orderNumber', nil)
-              if shipment_number.present?
-                error_payload = params.find {|param| param[:orderNumber] == shipment_number }
-                Rails.logger.warn("[CreateShipstationOrderFailed] #{error_payload}")
-              end
+        shipstation_order = shipstation_orders_h.fetch(resp['orderNumber'], nil)
+        next if shipstation_order.blank?
 
-              next
-            end
-
-            shipment = shipments_h.fetch(resp['orderNumber'], nil)
-            shipstation_order = shipment&.shipstation_order
-            next if shipment.blank? || shipstation_order.blank?
-
-            if shipstation_order.order_id != resp['orderId'] || shipstation_order.order_key != resp['orderKey']
-              shipstation_order.update(order_id: resp['orderId'], order_key: resp['orderKey'])
-            end
-          end
-
-          wait
+        if shipstation_order.order_id != resp['orderId'] || shipstation_order.order_key != resp['orderKey']
+          shipstation_order.update(order_id: resp['orderId'], order_key: resp['orderKey'])
         end
       end
     end
@@ -386,56 +174,6 @@ module SpreeShipstation
 
     def delete_shipstation_order(order_id)
       @api_client.delete_order(order_id)
-    end
-
-    def convert_address(address)
-      return if address.blank?
-
-      {
-        name: "#{address.firstname} #{address.lastname}",
-        company: address.company,
-        street1: address.address1,
-        street2: address.address2,
-        street3: nil,
-        city: address.city,
-        state: address.state ? address.state.abbr : address.state_name,
-        country: address.country&.iso,
-        postalCode: address.zipcode,
-        phone: address.phone
-      }
-    end
-
-    def get_shipment_items(line_items)
-      line_items.map do |line|
-        variant = line.variant
-        image_url = (variant.images.first || variant.product.images.first).try(:url, :pdp_thumbnail)
-        item = {
-          sku: variant.sku,
-          name: [variant.product.name, variant.options_text].join(" ").try(:[], 0..198),
-          imageUrl: image_url.present? ? image_url : '',
-          quantity: line.quantity,
-          unitPrice: line.price,
-        }
-        if variant.weight.present? && variant.weight.to_f > 0
-          item[:weight] = {
-            value: variant.weight.to_f,
-            units: ::SpreeShipstation.configuration.weight_units
-          }
-        end
-
-        if variant.option_values.present?
-          item = item.merge({
-            options: variant.option_values.map do |value|
-              {
-                name: value.option_type.presentation,
-                value: value.name
-              }
-            end
-          })
-        end
-
-        item
-      end.compact
     end
     
     def get_carrier(carrier_code, service_code)
