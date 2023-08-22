@@ -25,8 +25,9 @@ module Spree
                     {
                       option_values: :option_type,
                       images: :attachment_blob,
+                      product: {master: {images: :attachment_blob}}
                     },
-                    :product
+                    # :product
                   ]
                 }
               ]
@@ -41,15 +42,31 @@ module Spree
         }
       ]).map do |shipstation_order|
         basic_data = shipstation_order.shipstation_order_data(false)
+        next if basic_data.blank?
         custom_data = custom_datas.fetch(shipstation_order.id, nil)
         basic_data.merge!(custom_data) if custom_data.present?
 
         [shipstation_order.id, basic_data]
-      end ]
+      end.compact ]
     end
 
     def self.custom_shipstation_orders_data(shipstation_orders)
-      {}
+      ::Hash[ shipstation_orders.includes([
+        {
+          shipment: [
+            :inventory_units,
+            order: [
+              {
+                ship_address: [:state, :country],
+                bill_address: [:state, :country],
+              },
+            ]
+          ]
+        },
+        :shipstation_account
+      ]).map do |shipstation_order|
+        [shipstation_order.id, shipstation_order.custom_shipstation_order_data]
+      end ]
     end
 
     def shipstation_order_data(with_custom_data = true)
