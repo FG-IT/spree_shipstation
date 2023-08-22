@@ -119,18 +119,22 @@ module SpreeShipstation
     def process_shipstation_orders(shipstation_orders)
       sos = []
       shipstation_orders.each do |so|
-        if so.data.present?
+        if so.data.present? && so.data != 'null'
           data = JSON.parse(so.data, {symbolize_names: true})
           sos << data
         else
           data = so.shipstation_order_data
+          next if data.blank?
+
           so.data = JSON.generate(data)
-          so.is_update = false
+          so.is_updated = false
           so.save
 
           sos << data
         end
       end
+
+      return if sos.blank?
 
       res = create_shipstation_orders(sos)
       unless res

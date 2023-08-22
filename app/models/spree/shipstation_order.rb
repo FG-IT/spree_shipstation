@@ -25,8 +25,8 @@ module Spree
                     {
                       option_values: :option_type,
                       images: :attachment_blob,
-                      product: {images: :attachment_blob}
-                    }
+                    },
+                    :product
                   ]
                 }
               ]
@@ -53,8 +53,11 @@ module Spree
     end
 
     def shipstation_order_data(with_custom_data = true)
-      order = shipment.order
-      return unless order.completed?
+      order = shipment&.order
+      if order.blank? || !order.completed?
+        ::Rails.logger.warn("[InvalidShipstationOrder] ShipstationOrderID: #{self.id}, ShipmentID: #{self.shipment_id}")
+        return
+      end
 
       lis = shipment.inventory_units.map do |inventory_unit|
         li = inventory_unit.line_item
