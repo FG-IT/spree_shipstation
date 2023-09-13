@@ -116,10 +116,10 @@ module SpreeShipstation
         ::Spree::OrderAddressVerification.upsert_all(order_address_verification_attrs.values)
 
         if oav_notifications[:verified].present?
-          ::Spree::Order.where(id: oav_notifications[:verified].uniq).each {|order| order.after_address_verified }
+          ::Spree::Order.where(id: oav_notifications[:verified].uniq).each {|order| order.try(:after_address_verified) }
         end
         if oav_notifications[:verify_failed].present?
-          ::Spree::Order.where(id: oav_notifications[:verify_failed].uniq).each {|order| order.after_address_verify_failed }
+          ::Spree::Order.where(id: oav_notifications[:verify_failed].uniq).each {|order| order.try(:after_address_verify_failed) }
         end
 
         shipment_ids = shipments_mapping.keys
@@ -223,10 +223,10 @@ module SpreeShipstation
 
       ::Spree::OrderAddressVerification.upsert_all(order_address_verification_attrs) if order_address_verification_attrs.present?
       if oav_notifications[:verified].present?
-        ::Spree::Order.where(id: oav_notifications[:verified].uniq).each {|order| order.after_address_verified }
+        ::Spree::Order.where(id: oav_notifications[:verified].uniq).each {|order| order.try(:after_address_verified) }
       end
       if oav_notifications[:verify_failed].present?
-        ::Spree::Order.where(id: oav_notifications[:verify_failed].uniq).each {|order| order.after_address_verify_failed }
+        ::Spree::Order.where(id: oav_notifications[:verify_failed].uniq).each {|order| order.try(:after_address_verify_failed) }
       end
     end
 
