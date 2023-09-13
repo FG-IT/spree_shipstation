@@ -85,19 +85,57 @@ module SpreeShipstation
         shipment_numbers = res['orders'].map {|r| r['orderNumber'] }
         shipments = ::Spree::Shipment.where(number: shipment_numbers)
         shipments_mapping = ::Hash[ shipments.map {|shipment| [shipment.id, {shipment: shipment, shipstation: res_orders.fetch(shipment['number'], nil)}] } ]
-        
-        shipment_ids = shipments.map {|shipment| shipment.id }
+
+        order_ids = shipments.map {|shipment| shipment.order_id }.uniq
+        oavs = ::Hash[ ::Spree::OrderAddressVerification.where(order_id: order_ids).map {|oav| [oav.order_id, oav] } ]
+        order_address_verification_attrs = {}
+        oav_notifications = {verified: [], verify_failed: []}
+        shipments.each do |shipment|
+          sm = shipments_mapping.fetch(shipment.id, nil)
+          next if sm.blank? || sm[:shipstation].blank?
+
+          order_id = shipment.order_id
+
+          oav_attr = order_address_verification_from_shipstation_order(sm[:shipstation])
+          oav_attr[:order_id] = order_id
+
+          if oavs.has_key?(order_id)
+            oav = oavs[order_id]
+            if oav_attr[:verified].nil?
+              # Ignore verify pending
+            elsif !oav.verified? && oav_attr[:verified]
+              oav_notifications[:verified] << order_id
+            elsif oav.verified.nil? && !oav_attr[:verified]
+              oav_notifications[:verify_failed] << order_id
+            end
+          end
+          next if order_address_verification_attrs.has_key?(shipment.order_id)
+
+          order_address_verification_attrs[shipment.order_id] = oav_attr
+        end
+        ::Spree::OrderAddressVerification.upsert_all(order_address_verification_attrs.values)
+
+        if oav_notifications[:verified].present?
+          ::Spree::Order.where(id: oav_notifications[:verified].uniq).each {|order| order.after_address_verified }
+        end
+        if oav_notifications[:verify_failed].present?
+          ::Spree::Order.where(id: oav_notifications[:verify_failed].uniq).each {|order| order.after_address_verify_failed }
+        end
+
+        shipment_ids = shipments_mapping.keys
+        # shipment_ids = shipments.map {|shipment| shipment.id }
         ::Spree::ShipstationOrder.where(shipment_id: shipments_mapping.keys).each do |shipstation_order|
           sm = shipments_mapping.delete(shipstation_order.shipment_id)
-          next if sm[:shipstation].blank?
+          next if sm.blank? || sm[:shipstation].blank?
 
-          shipstation_order.update(order_id: sm[:shipstation]['orderId'], order_key: sm[:shipstation]['orderKey'])
+          shipstation_order.update(order_id: sm[:shipstation]['orderId'], order_key: sm[:shipstation]['orderKey']) if shipstation_order.order_id != sm[:shipstation]['orderId']
         end
 
         return if shipments_mapping.blank?
 
-        shipstation_orders_arr = shipments_mapping.values.map do |sm|
-          next if sm[:shipstation].blank?
+        shipstation_orders_arr = shipments_mapping.values.compact.map do |sm|
+          next if sm.blank? || sm[:shipstation].blank?
+
           {
             shipment_id: sm[:shipment].id,
             order_id: sm[:shipstation]['orderId'],
@@ -144,7 +182,13 @@ module SpreeShipstation
 
       return unless res.present? && res['results'].present?
 
+      order_address_verification_attrs = []
+      oav_notifications = {verified: [], verify_failed: []}
+
       shipments = ::Hash[ ::Spree::Shipment.where(id: shipstation_orders.map {|so| so.shipment_id }.uniq).map {|shipment| [shipment.id, shipment] } ]
+      order_ids = shipments.values.map {|shipment| shipment.order_id }.uniq
+      oavs = ::Hash[ ::Spree::OrderAddressVerification.where(order_id: order_ids).map {|oav| [oav.order_id, oav] } ]
+
       shipstation_orders_h = ::Hash[ shipstation_orders.map {|so| [shipments[so.shipment_id].try(:number), so] } ]
       res['results'].each do |resp|
         next if resp.blank?
@@ -157,6 +201,32 @@ module SpreeShipstation
         if shipstation_order.order_id != resp['orderId'] || shipstation_order.order_key != resp['orderKey']
           shipstation_order.update(order_id: resp['orderId'], order_key: resp['orderKey'])
         end
+
+        shipment = shipments.fetch(shipstation_order.shipment_id, nil)
+        next if shipmemt.blank?
+
+        oav_attr = order_address_verification_from_shipstation_order(resp)
+        oav_attr[:order_id] = shipment.order_id
+        if oavs.has_key?(order_id)
+          oav = oavs[order_id]
+          if oav_attr[:verified].nil?
+            # Ignore verify pending
+          elsif !oav.verified? && oav_attr[:verified]
+            oav_notifications[:verified] << order_id
+          elsif oav.verified.nil? && !oav_attr[:verified]
+            oav_notifications[:verify_failed] << order_id
+          end
+        end
+
+        order_address_verification_attrs << oav_attr
+      end
+
+      ::Spree::OrderAddressVerification.upsert_all(order_address_verification_attrs) if order_address_verification_attrs.present?
+      if oav_notifications[:verified].present?
+        ::Spree::Order.where(id: oav_notifications[:verified].uniq).each {|order| order.after_address_verified }
+      end
+      if oav_notifications[:verify_failed].present?
+        ::Spree::Order.where(id: oav_notifications[:verify_failed].uniq).each {|order| order.after_address_verify_failed }
       end
     end
 
@@ -179,7 +249,27 @@ module SpreeShipstation
     def delete_shipstation_order(order_id)
       @api_client.delete_order(order_id)
     end
-    
+
+    def order_address_verification_from_shipstation_order(so)
+      verified = message = nil
+      if so['shipTo']['addressVerified'].is_a?(String)
+        message = so['shipTo']['addressVerified']
+        if message.include?('validated successfully')
+          verified = true
+        elsif message.include?('validation warning') || message.include?('validation failed')
+          verified = false
+        end
+      else
+        verified = so['shipTo']['addressVerified']
+      end
+
+      {
+        verified: verified,
+        residential: so['shipTo']['residential'],
+        message: message,
+      }
+    end
+
     def get_carrier(carrier_code, service_code)
       if carrier_code == 'stamps_com' && service_code.start_with?('usps_')
         'USPS'
