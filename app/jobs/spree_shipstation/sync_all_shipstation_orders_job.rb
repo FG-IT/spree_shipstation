@@ -1,5 +1,5 @@
 module SpreeShipstation
-  class SyncAllShipmentOrdersJob < ApplicationJob
+  class SyncAllShipstationOrdersJob < ApplicationJob
     queue_as :shipstation
 
     def perform
