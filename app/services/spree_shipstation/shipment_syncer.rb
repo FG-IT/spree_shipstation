@@ -203,7 +203,7 @@ module SpreeShipstation
         end
 
         shipment = shipments.fetch(shipstation_order.shipment_id, nil)
-        next if shipmemt.blank?
+        next if shipment.blank?
 
         oav_attr = order_address_verification_from_shipstation_order(resp)
         oav_attr[:order_id] = shipment.order_id
