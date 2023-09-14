@@ -2,10 +2,10 @@ module SpreeShipstation
   class ShippingCostCalculator
     DAILY_STATISTIC_LABEL = 'Shipping'
     class << self
-      def update_daily_statistics(from_date, to_date = Date.today)
+      def update_daily_statistics(from_date, to_date = ::Date.today)
         data = calculate(from_date, to_date)
         data.each do |date, costs|
-          Spree::DailyStatistic.update_daily_statistic(date, DAILY_STATISTIC_LABEL, costs, -1)
+          ::Spree::DailyStatistic.update_daily_statistic(date, DAILY_STATISTIC_LABEL, costs, -1)
         end
       end
 

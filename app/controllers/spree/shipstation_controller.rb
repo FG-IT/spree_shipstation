@@ -18,12 +18,12 @@ module Spree
     def date_param(name)
       return if params[name].blank?
 
-      Time.strptime("#{params[name]} UTC", "%m/%d/%Y %H:%M %Z")
+      ::Time.strptime("#{params[name]} UTC", "%m/%d/%Y %H:%M %Z")
     end
 
     def authenticate_shipstation
       authenticate_or_request_with_http_basic do |username, password|
-        @shipstation_account = Spree::ShipstationAccount.find_by(username: username)
+        @shipstation_account = ::Spree::ShipstationAccount.find_by(username: username)
         @shipstation_account.present? && password == @shipstation_account.password
       end
     end

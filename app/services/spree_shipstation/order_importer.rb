@@ -4,7 +4,7 @@ module SpreeShipstation
       @shipstation_account = shipstation_account
       @api_key = shipstation_account.api_key
       @api_secret = shipstation_account.api_secret
-      @api_client = SpreeShipstation::Api.new(@api_key, @api_secret)
+      @api_client = ::SpreeShipstation::Api.new(@api_key, @api_secret)
     end
 
     def import_order(shipment)
@@ -34,7 +34,7 @@ module SpreeShipstation
         'pageSize' => PAGE_SIZE,
         'sortBy' => 'createDate',
         'createDateStart' => @last_create_on,
-        'createDateEnd' => DateTime.tomorrow.end_of_day.to_formatted_s(:iso8601)
+        'createDateEnd' => ::DateTime.tomorrow.end_of_day.to_formatted_s(:iso8601)
       }
       p['storeId'] = @shipstation_account.shipstation_store_id if @shipstation_account.shipstation_store_id.present?
       p
@@ -42,7 +42,7 @@ module SpreeShipstation
 
     def process_response(res)
       res['shipments']&.each do |ss_shipment|
-        spree_shipment = Spree::Shipment.find_by(number: ss_shipment['orderNumber'])
+        spree_shipment = ::Spree::Shipment.find_by(number: ss_shipment['orderNumber'])
         next if spree_shipment.blank?
         attrs = { actual_cost: ss_shipment['shipmentCost'] }
         attrs[:carrier] = get_carrier(ss_shipment['carrierCode'], ss_shipment['serviceCode']) if spree_shipment.carrier.blank?

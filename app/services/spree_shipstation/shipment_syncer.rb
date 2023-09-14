@@ -14,8 +14,8 @@ module SpreeShipstation
       @shipstation_account = shipstation_account
       @api_key = shipstation_account.api_key
       @api_secret = shipstation_account.api_secret
-      @api_client = SpreeShipstation::Api.new(@api_key, @api_secret)
-      @last_create_on = ((@shipstation_account.shipments_sync_until || Spree::Order.minimum(:created_at)) - 2.days).to_formatted_s(:iso8601)
+      @api_client = ::SpreeShipstation::Api.new(@api_key, @api_secret)
+      @last_create_on = ((@shipstation_account.shipments_sync_until || ::Spree::Order.minimum(:created_at)) - 2.days).to_formatted_s(:iso8601)
       @page = 1
     end
 
@@ -42,19 +42,19 @@ module SpreeShipstation
         res['shipments'].each do |ss|
           shipment = shipments_mapping.fetch(ss['orderNumber'], nil)
           if shipment.blank? || (shipment.tracking.present? && shipment.carrier.present? && shipment.actual_cost > 0)
-            Rails.logger.info("[ShipmentCostAlreadyExist] #{shipment&.number}")
+            ::Rails.logger.info("[ShipmentCostAlreadyExist] #{shipment&.number}")
             next
           end
-          Rails.logger.info("[ShipmentSync] Shipstation: #{ss}, Website: #{shipment.to_json}")
+          ::Rails.logger.info("[ShipmentSync] Shipstation: #{ss}, Website: #{shipment.to_json}")
 
           attrs = { actual_cost: ss['shipmentCost'] }
           attrs[:carrier] = get_carrier(ss['carrierCode'], ss['serviceCode']) if shipment.carrier.blank?
           attrs[:tracking] = ss['trackingNumber'] if shipment.tracking.blank?
           begin
             shipment&.update_attributes_and_order(attrs)
-            Rails.logger.info("[ShipmentSynced] Shipment: #{shipment.number}, Info: #{attrs}")
+            ::Rails.logger.info("[ShipmentSynced] Shipment: #{shipment.number}, Info: #{attrs}")
           rescue
-            Rails.logger.warn("[ShipmentUpdateTrackingFailed] Number: #{ss['orderNumber']}, Attrs: #{attrs}")
+            ::Rails.logger.warn("[ShipmentUpdateTrackingFailed] Number: #{ss['orderNumber']}, Attrs: #{attrs}")
           end
         end
 
@@ -176,9 +176,9 @@ module SpreeShipstation
 
       res = create_shipstation_orders(sos)
       unless res
-        Rails.logger.debug("[ShipstationPayload] #{params}")
+        ::Rails.logger.debug("[ShipstationPayload] #{params}")
       end
-      Rails.logger.debug("[ShipstationResponse] #{res}")
+      ::Rails.logger.debug("[ShipstationResponse] #{res}")
 
       return unless res.present? && res['results'].present?
 
@@ -252,7 +252,7 @@ module SpreeShipstation
 
     def order_address_verification_from_shipstation_order(so)
       verified = message = nil
-      if so['shipTo']['addressVerified'].is_a?(String)
+      if so['shipTo']['addressVerified'].is_a?(::String)
         message = so['shipTo']['addressVerified']
         if message.include?('validated successfully')
           verified = true
