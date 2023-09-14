@@ -205,20 +205,22 @@ module SpreeShipstation
         shipment = shipments.fetch(shipstation_order.shipment_id, nil)
         next if shipment.blank?
 
-        oav_attr = order_address_verification_from_shipstation_order(resp)
-        oav_attr[:order_id] = shipment.order_id
-        if oavs.has_key?(order_id)
-          oav = oavs[order_id]
-          if oav_attr[:verified].nil?
-            # Ignore verify pending
-          elsif !oav.verified? && oav_attr[:verified]
-            oav_notifications[:verified] << order_id
-          elsif oav.verified.nil? && !oav_attr[:verified]
-            oav_notifications[:verify_failed] << order_id
+        if resp.has_key?('shipTo')
+          oav_attr = order_address_verification_from_shipstation_order(resp)
+          oav_attr[:order_id] = shipment.order_id
+          if oavs.has_key?(order_id)
+            oav = oavs[order_id]
+            if oav_attr[:verified].nil?
+              # Ignore verify pending
+            elsif !oav.verified? && oav_attr[:verified]
+              oav_notifications[:verified] << order_id
+            elsif oav.verified.nil? && !oav_attr[:verified]
+              oav_notifications[:verify_failed] << order_id
+            end
           end
-        end
 
-        order_address_verification_attrs << oav_attr
+          order_address_verification_attrs << oav_attr
+        end
       end
 
       ::Spree::OrderAddressVerification.upsert_all(order_address_verification_attrs) if order_address_verification_attrs.present?
