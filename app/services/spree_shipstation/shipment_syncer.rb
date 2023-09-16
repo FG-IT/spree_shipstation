@@ -108,12 +108,14 @@ module SpreeShipstation
             elsif oav.verified.nil? && !oav_attr[:verified]
               oav_notifications[:verify_failed] << order_id
             end
-          end
-          next if order_address_verification_attrs.has_key?(shipment.order_id)
+            oav.update_columns(oav_attr) if oav.verified != oav_attr[:verified]
+          else
+            next if order_address_verification_attrs.has_key?(shipment.order_id)
 
-          order_address_verification_attrs[shipment.order_id] = oav_attr
+            order_address_verification_attrs[shipment.order_id] = oav_attr
+          end
         end
-        ::Spree::OrderAddressVerification.upsert_all(order_address_verification_attrs.values)
+        ::Spree::OrderAddressVerification.insert_all(order_address_verification_attrs.values) if order_address_verification_attrs.present?
 
         if oav_notifications[:verified].present?
           ::Spree::Order.where(id: oav_notifications[:verified].uniq).each {|order| order.try(:after_address_verified) }
@@ -131,21 +133,21 @@ module SpreeShipstation
           shipstation_order.update(order_id: sm[:shipstation]['orderId'], order_key: sm[:shipstation]['orderKey']) if shipstation_order.order_id != sm[:shipstation]['orderId']
         end
 
-        return if shipments_mapping.blank?
+        if shipments_mapping.present?
+          shipstation_orders_arr = shipments_mapping.values.compact.map do |sm|
+            next if sm.blank? || sm[:shipstation].blank?
 
-        shipstation_orders_arr = shipments_mapping.values.compact.map do |sm|
-          next if sm.blank? || sm[:shipstation].blank?
-
-          {
-            shipment_id: sm[:shipment].id,
-            order_id: sm[:shipstation]['orderId'],
-            order_key: sm[:shipstation]['orderKey'],
-            needed: true,
-            created_at: sm[:shipstation]['createDate'],
-            updated_at: sm[:shipstation]['modifyDate']
-          }
-        end.compact
-        ::Spree::ShipstationOrder.insert_all(shipstation_orders_arr)
+            {
+              shipment_id: sm[:shipment].id,
+              order_id: sm[:shipstation]['orderId'],
+              order_key: sm[:shipstation]['orderKey'],
+              needed: true,
+              created_at: sm[:shipstation]['createDate'],
+              updated_at: sm[:shipstation]['modifyDate']
+            }
+          end.compact
+          ::Spree::ShipstationOrder.insert_all(shipstation_orders_arr)
+        end
 
         pages = res.fetch('pages', 1)
         break if filter[:page] >= pages
@@ -207,7 +209,6 @@ module SpreeShipstation
 
         if resp.has_key?('shipTo')
           oav_attr = order_address_verification_from_shipstation_order(resp)
-          oav_attr[:order_id] = shipment.order_id
           if oavs.has_key?(order_id)
             oav = oavs[order_id]
             if oav_attr[:verified].nil?
@@ -217,13 +218,15 @@ module SpreeShipstation
             elsif oav.verified.nil? && !oav_attr[:verified]
               oav_notifications[:verify_failed] << order_id
             end
+            oav.update_columns(oav_attr) if oav.verified != oav_attr[:verified]
+          else
+            oav_attr[:order_id] = shipment.order_id
+            order_address_verification_attrs << oav_attr
           end
-
-          order_address_verification_attrs << oav_attr
         end
       end
 
-      ::Spree::OrderAddressVerification.upsert_all(order_address_verification_attrs) if order_address_verification_attrs.present?
+      ::Spree::OrderAddressVerification.insert_all(order_address_verification_attrs) if order_address_verification_attrs.present?
       if oav_notifications[:verified].present?
         ::Spree::Order.where(id: oav_notifications[:verified].uniq).each {|order| order.try(:after_address_verified) }
       end
