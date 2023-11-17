@@ -14,7 +14,7 @@ module Spree
         query = query.merge(::Spree::Order.where.not(approved_at: nil)) if need_order_approval
 
         # if the payment is authed, but not caputred yet, the shipment status is pending.
-        query = query.where(spree_shipments: {state: ["ready", "pending"]})
+        query = query.where(spree_shipments: {state: ["ready", "pending", "canceled"]})
 
         # unless SpreeShipstation.configuration.capture_at_notification
         #   query = query.where(spree_shipments: {state: ["ready", "canceled"]})
