@@ -24,7 +24,7 @@ module SpreeShipstation
           xml.Country    address.country.iso
         end
 
-        xml.Phone        address.phone
+        xml.Phone        address.phone&.slice(0, 48)
       }
     end
     # rubocop:enable all
