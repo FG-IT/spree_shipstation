@@ -27,7 +27,7 @@ xml.Orders(pages: (@shipments.total_count / 50.0).ceil) {
       xml.Items {
         shipment.inventory_units.each do |inventory_unit|
           line = @line_items[inventory_unit.line_item_id]
-          next if line.try(:refund_items).present?
+          # next if line.try(:refund_items).present?
           variant = line.variant
           image_url = (variant.images.first || variant.product.images.first).try(:url, :small)
           xml.Item {
