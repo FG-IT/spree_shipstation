@@ -16,8 +16,8 @@ module SpreeShipstation
         xml.Company      address.company
 
         if type == :ship
-          xml.Address1   address.address1
-          xml.Address2   address.address2
+          xml.Address1   address.address1.try(:slice, 0, 199)
+          xml.Address2   address.address2.try(:slice, 0, 199)
           xml.City       address.city
           xml.State      address.state ? address.state.abbr : address.state_name
           xml.PostalCode address.zipcode
