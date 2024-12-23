@@ -36,8 +36,8 @@ module SpreeShipstation
         'page' => @page,
         'pageSize' => PAGE_SIZE,
         'sortBy' => 'createDate',
-        'createDateStart' => @last_create_on,
-        'createDateEnd' => DateTime.tomorrow.end_of_day.to_formatted_s(:iso8601)
+        'shipDateStart' => @last_create_on,
+        'shipDateEnd' => DateTime.tomorrow.end_of_day.to_formatted_s(:iso8601)
       }
       p['storeId'] = @shipstation_account.shipstation_store_id if @shipstation_account.shipstation_store_id.present?
       p
