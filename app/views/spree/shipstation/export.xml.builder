@@ -31,7 +31,7 @@ xml.Orders(pages: (@shipments.total_count / 50.0).ceil) {
           variant = line.variant
           image_url = (variant.images.first || variant.product.images.first).try(:url, :small)
           xml.Item {
-            xml.SKU variant.sku
+            xml.SKU variant.sku.try(:[], 0..98)
             xml.Name [variant.product.name, variant.options_text].join(" ").try(:[], 0..198)
             xml.ImageUrl image_url.present? ? main_app.url_for(image_url) : ''
             xml.Weight variant.weight.to_f
