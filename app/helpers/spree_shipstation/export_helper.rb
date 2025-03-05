@@ -12,7 +12,7 @@ module SpreeShipstation
       address = order.send("#{type}_address")
 
       xml.__send__(name) {
-        xml.Name         address.respond_to?(:name) ? address.name : address.full_name
+        xml.Name         address.respond_to?(:name) ? address.name.try(:[], 0..98) : address.full_name.try(:[], 0..98)
         xml.Company      address.company
 
         if type == :ship
